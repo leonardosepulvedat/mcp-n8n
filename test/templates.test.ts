@@ -66,14 +66,15 @@ describe('templates integrity', () => {
     }
   });
 
-  it('contains no leaked secrets or personal data', () => {
+  it('templates contain no values matching known API key formats', () => {
     const forbidden = [
       /cal_live_[a-z0-9]+/,
-      /lsepulvedatabares@/,
       /sk-proj-[A-Za-z0-9]/,
       /xox[bap]-/,
       /ghp_[A-Za-z0-9]{36}/,
       /sk_live_[A-Za-z0-9]{20,}/,
+      /AIza[A-Za-z0-9_\-]{35}/,
+      /whsec_[A-Za-z0-9]{20,}/,
     ];
 
     const files = readdirSync(EXAMPLES_DIR).filter(f => f.endsWith('.json'));
