@@ -260,7 +260,7 @@
       ],
       "webhookId": "0de8b6e8-8611-48a9-ba25-1d023698f577",
       "parameters": {
-        "sendTo": "miha.ambroz@n8n.io",
+        "sendTo": "recipient@example.com",
         "message": "={{ $json.data }}",
         "options": {},
         "subject": "Weekly tech newsletter"
@@ -665,7 +665,7 @@
         "createdAt": "2025-10-25T12:28:30.681Z",
         "updatedAt": "2025-10-25T12:30:12.034Z",
         "id": "gRDCuWZgtIsQJhnE",
-        "name": "Leonardo Sepúlveda <lsepulvedatabares@gmail.com>",
+        "name": "Leonardo Sepúlveda <user@example.com>",
         "type": "personal",
         "icon": null,
         "description": null

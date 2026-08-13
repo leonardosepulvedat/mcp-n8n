@@ -1756,7 +1756,7 @@
     },
     {
       "parameters": {
-        "fromEmail": "gatura@bulkbox.co.ke",
+        "fromEmail": "sender@example.com",
         "toEmail": "={{ $json.To }}",
         "subject": "={{ $json.Subject }}",
         "emailFormat": "text",
@@ -1823,8 +1823,8 @@
         "calendar": {
           "__rl": true,
           "mode": "list",
-          "value": "gaturanjenga@gmail.com",
-          "cachedResultName": "gaturanjenga@gmail.com"
+          "value": "user@example.com",
+          "cachedResultName": "user@example.com"
         },
         "start": "={{ $fromAI(\"start_time\", \"The start time for the meeting\", \"string\", \"2025-01-01T09:00:00Z\") }}\n",
         "end": "={{ $fromAI(\"end_time\", \"The end time for the meeting\", \"string\", \"2025-01-01T09:00:00Z\") }}",
@@ -2962,7 +2962,7 @@
         "createdAt": "2025-10-25T12:28:30.681Z",
         "updatedAt": "2025-10-25T12:30:12.034Z",
         "id": "gRDCuWZgtIsQJhnE",
-        "name": "Leonardo Sepúlveda <lsepulvedatabares@gmail.com>",
+        "name": "Leonardo Sepúlveda <user@example.com>",
         "type": "personal",
         "icon": null,
         "description": null

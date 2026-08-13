@@ -35,7 +35,7 @@
         "channelId": {
           "__rl": true,
           "mode": "id",
-          "value": "=19:NQuQMYvvtC9DcTEQs1Vul1Nm1xIXnRmznAwov7MuNZ81@thread.tacv2"
+          "value": "=19:YOUR_TEAMS_CHANNEL_ID@thread.tacv2"
         }
       },
       "id": "7db59947-3def-4259-8164-58d6c8552334",
@@ -185,7 +185,7 @@
         "channelId": {
           "__rl": true,
           "mode": "id",
-          "value": "=19:NQuQMYvvtC9DcTEQs1Vul1Nm1xIXnRmznAwov7MuNZ81@thread.tacv2"
+          "value": "=19:YOUR_TEAMS_CHANNEL_ID@thread.tacv2"
         },
         "contentType": "html",
         "message": "={{ $json.html }}",
@@ -469,7 +469,7 @@
         "createdAt": "2025-10-25T12:28:30.681Z",
         "updatedAt": "2025-10-25T12:30:12.034Z",
         "id": "gRDCuWZgtIsQJhnE",
-        "name": "Leonardo Sepúlveda <lsepulvedatabares@gmail.com>",
+        "name": "Leonardo Sepúlveda <user@example.com>",
         "type": "personal",
         "icon": null,
         "description": null

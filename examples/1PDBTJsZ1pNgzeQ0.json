@@ -495,7 +495,7 @@
             {
               "name": "Authorization",
               "valueProvider": "fieldValue",
-              "value": "Bearer cal_live_6cd60e462f8dc9b065fb48624e5918d8"
+              "value": "Bearer YOUR_CAL_COM_API_KEY"
             },
             {
               "name": "Content-Type",
@@ -585,7 +585,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer cal_live_6cd60e462f8dc9b065fb48624e5918d8"
+              "value": "Bearer YOUR_CAL_COM_API_KEY"
             },
             {
               "name": "Content-Type",
@@ -1373,7 +1373,7 @@
         "createdAt": "2025-10-25T12:28:30.681Z",
         "updatedAt": "2025-10-25T12:30:12.034Z",
         "id": "gRDCuWZgtIsQJhnE",
-        "name": "Leonardo Sepúlveda <lsepulvedatabares@gmail.com>",
+        "name": "Leonardo Sepúlveda <user@example.com>",
         "type": "personal",
         "icon": null,
         "description": null

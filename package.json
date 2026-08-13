@@ -1,17 +1,18 @@
 {
   "name": "mcp-n8n",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "MCP server for n8n API - Complete integration for workflow automation",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "mcp-n8n": "./dist/index.js"
+    "mcp-n8n": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
     "dev": "tsc --watch",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test": "vitest run"
   },
   "keywords": [
     "mcp",
@@ -33,20 +34,23 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/leosepulveda/mcp-n8n.git"
+    "url": "git+https://github.com/leonardosepulvedat/mcp-n8n.git"
   },
   "bugs": {
-    "url": "https://github.com/leosepulveda/mcp-n8n/issues"
+    "url": "https://github.com/leonardosepulvedat/mcp-n8n/issues"
   },
-  "homepage": "https://github.com/leosepulveda/mcp-n8n#readme",
+  "homepage": "https://github.com/leonardosepulvedat/mcp-n8n#readme",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
-    "axios": "^1.7.9",
-    "dotenv": "^17.2.3",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "axios": "^1.19.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-13
+
+### Security
+- Removed a live Cal.com API key that was embedded in one of the bundled workflow templates. **If you saw this key, note it has been revoked; never reuse keys found in templates.**
+- Sanitized all 100 bundled templates: real email addresses (including third parties'), a private Google Calendar ID, Telegram chat IDs, and a Microsoft Teams channel ID were replaced with placeholders.
+- Updated all dependencies; `npm audit` is clean (previously 8 vulnerabilities, 4 high, including a cross-client data leak in the MCP SDK).
+
+### Fixed
+- `n8n_update_workflow` now supports partial updates: the current workflow is fetched and merged before sending, since the n8n public API rejects partial PUT bodies (previously, changing just the name failed with a validation error).
+- `n8n_create_workflow` no longer fails when only a name is provided: `nodes`, `connections`, and `settings` (required by the API) get sensible defaults.
+- Repository, bugs, and homepage URLs now point to the correct GitHub account.
+- Server version reported over MCP now stays in sync with `package.json`.
+
+### Changed
+- Migrated to the modern `McpServer` API with per-tool Zod input validation (arguments are validated before reaching the n8n API).
+- All 45 tools now carry MCP annotations: 16 read-only tools are marked with `readOnlyHint` and 8 destructive tools (deletes, user removal) with `destructiveHint`, so MCP clients can require confirmation appropriately.
+- Requires Node.js >= 20.
+- Removed unused `dotenv` dependency.
+
+### Added
+- Unit tests (Vitest) covering workflow create/update merging, field filtering, template matching, template file integrity, and a guard that fails if secrets or personal data reappear in bundled templates.
+- Continuous integration with GitHub Actions (build, tests, and dependency audit on Node 20 and 22).
+
 ## [1.1.0] - 2025-10-31
 
 ### Added - Token Optimization Features 🎯

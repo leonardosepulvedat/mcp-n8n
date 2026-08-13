@@ -171,7 +171,7 @@
       ],
       "webhookId": "29614d41-05c1-44af-93a6-4831a27f9331",
       "parameters": {
-        "sendTo": "shindearyan179@gmail.com",
+        "sendTo": "recipient@example.com",
         "message": "=Generated Post:\n{{ $json['Post Content'] }}\n\n----------\n\nPost Description:\n{{ $json['Post Description'] }}\n\n----------\n\nInstructions:\n{{ $json.Instructions }}",
         "options": {},
         "subject": "Approval for LinkedIn Post",
@@ -791,7 +791,7 @@
         "createdAt": "2025-10-25T12:28:30.681Z",
         "updatedAt": "2025-10-25T12:30:12.034Z",
         "id": "gRDCuWZgtIsQJhnE",
-        "name": "Leonardo Sepúlveda <lsepulvedatabares@gmail.com>",
+        "name": "Leonardo Sepúlveda <user@example.com>",
         "type": "personal",
         "icon": null,
         "description": null

@@ -132,7 +132,7 @@
     },
     {
       "parameters": {
-        "fromEmail": "Elay's AI Assistant <elayguez@gmail.com>",
+        "fromEmail": "Elay's AI Assistant <user@example.com>",
         "toEmail": "={{ $('On form submission').item.json[\"Email:\"] }}",
         "subject": "=הסקירה היומית של מניית {{ $('AI Agent').item.json.output.stockSymbol }}: {{ $('AI Agent').item.json.output.analysisDate }}",
         "html": "={{ $json.html }}",
@@ -1355,7 +1355,7 @@
         "createdAt": "2025-10-25T12:28:30.681Z",
         "updatedAt": "2025-10-25T12:30:12.034Z",
         "id": "gRDCuWZgtIsQJhnE",
-        "name": "Leonardo Sepúlveda <lsepulvedatabares@gmail.com>",
+        "name": "Leonardo Sepúlveda <user@example.com>",
         "type": "personal",
         "icon": null,
         "description": null

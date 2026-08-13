@@ -28,7 +28,14 @@ export class N8nClient {
 
   async createWorkflow(workflow: WorkflowData): Promise<ApiResponse> {
     try {
-      const response = await this.client.post('/workflows', workflow);
+      // The n8n public API requires nodes, connections and settings on create
+      const body = {
+        name: workflow.name,
+        nodes: workflow.nodes ?? [],
+        connections: workflow.connections ?? {},
+        settings: workflow.settings ?? { executionOrder: 'v1' },
+      };
+      const response = await this.client.post('/workflows', body);
       return { data: response.data };
     } catch (error: any) {
       return { error: error.response?.data?.message || error.message };
@@ -79,7 +86,17 @@ export class N8nClient {
 
   async updateWorkflow(id: string, workflow: Partial<WorkflowData>): Promise<ApiResponse> {
     try {
-      const response = await this.client.put(`/workflows/${id}`, workflow);
+      // The n8n public API replaces the whole workflow on PUT (partial updates
+      // are rejected), so fetch the current state and merge the changes.
+      const current = await this.client.get(`/workflows/${id}`);
+      const existing = current.data;
+      const body = {
+        name: workflow.name ?? existing.name,
+        nodes: workflow.nodes ?? existing.nodes,
+        connections: workflow.connections ?? existing.connections,
+        settings: workflow.settings ?? existing.settings ?? { executionOrder: 'v1' },
+      };
+      const response = await this.client.put(`/workflows/${id}`, body);
       return { data: response.data };
     } catch (error: any) {
       return { error: error.response?.data?.message || error.message };

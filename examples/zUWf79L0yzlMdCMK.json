@@ -76,7 +76,7 @@
         "calendar": {
           "__rl": true,
           "mode": "list",
-          "value": "c_5792bdf04bc395cbcbc6f7b754268245a33779d36640cc80a357711aa2f09a0a@group.calendar.google.com",
+          "value": "your-calendar-id@group.calendar.google.com",
           "cachedResultName": "n8n-events"
         },
         "limit": 1,
@@ -1840,7 +1840,7 @@
         "createdAt": "2025-10-25T12:28:30.681Z",
         "updatedAt": "2025-10-25T12:30:12.034Z",
         "id": "gRDCuWZgtIsQJhnE",
-        "name": "Leonardo Sepúlveda <lsepulvedatabares@gmail.com>",
+        "name": "Leonardo Sepúlveda <user@example.com>",
         "type": "personal",
         "icon": null,
         "description": null

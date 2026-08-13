@@ -212,7 +212,7 @@ generates charts, and emails them to my team"
 - `n8n_list_workflows_summary` - ⚡ **Token-efficient** listing (id, name, active, tags only)
 - `n8n_list_workflows` - List with full details and optional field filtering
 - `n8n_get_workflow` - Get detailed workflow information
-- `n8n_update_workflow` - Modify existing workflows
+- `n8n_update_workflow` - Modify existing workflows (supports partial updates: omitted fields keep their current values)
 - `n8n_delete_workflow` - Remove workflows permanently
 - `n8n_activate_workflow` - Enable workflow execution
 - `n8n_deactivate_workflow` - Pause workflow execution
@@ -325,7 +325,7 @@ If you want to contribute or test local changes:
 
 ```bash
 # Clone repository
-git clone https://github.com/leosepulveda/mcp-n8n.git
+git clone https://github.com/leonardosepulvedat/mcp-n8n.git
 cd mcp-n8n
 
 # Install dependencies
@@ -410,7 +410,7 @@ pytest test_main.py
 
 ## 📋 Requirements
 
-- **Node.js**: 18 or higher
+- **Node.js**: 20 or higher
 - **n8n Instance**: Self-hosted or n8n Cloud (paid plan)
 - **n8n API Key**: Required for authentication
 - **AI IDE**: Claude Desktop or Cursor with MCP support
@@ -516,8 +516,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📧 Support
 
-- **Issues**: [GitHub Issues](https://github.com/leosepulveda/mcp-n8n/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/leosepulveda/mcp-n8n/discussions)
+- **Issues**: [GitHub Issues](https://github.com/leonardosepulvedat/mcp-n8n/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/leonardosepulvedat/mcp-n8n/discussions)
 - **n8n Community**: [community.n8n.io](https://community.n8n.io/)
 
 ---

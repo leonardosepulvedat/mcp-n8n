@@ -479,7 +479,7 @@
       "webhookId": "b76cf08e-146f-4dce-8b55-0467b6130b5c",
       "parameters": {
         "text": "=🚨 Alert: Hi there, | The {{ $json['Website URL'] }} website is currently down. Kindly look into this issue and take necessary action as soon as possible.  Thank you.",
-        "chatId": "-1002286661825",
+        "chatId": "YOUR_CHAT_ID",
         "additionalFields": {}
       },
       "credentials": {
@@ -555,7 +555,7 @@
       "webhookId": "b76cf08e-146f-4dce-8b55-0467b6130b5c",
       "parameters": {
         "text": "We're excited to announce that the {{ $('Website URLs').item.json['Website URL'] }} is now live! Feel free to visit and explore.",
-        "chatId": "-1002286661825",
+        "chatId": "YOUR_CHAT_ID",
         "additionalFields": {}
       },
       "credentials": {
@@ -920,7 +920,7 @@
         "createdAt": "2025-10-25T12:28:30.681Z",
         "updatedAt": "2025-10-25T12:30:12.034Z",
         "id": "gRDCuWZgtIsQJhnE",
-        "name": "Leonardo Sepúlveda <lsepulvedatabares@gmail.com>",
+        "name": "Leonardo Sepúlveda <user@example.com>",
         "type": "personal",
         "icon": null,
         "description": null
