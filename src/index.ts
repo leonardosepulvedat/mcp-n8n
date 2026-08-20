@@ -13,6 +13,11 @@ import {
   loadTemplateFile,
   resolveTemplate,
 } from './templates.js';
+import { searchNodes, getNode, summarizeNode } from './node-catalog.js';
+import { validateWorkflow } from './validate.js';
+import { applyWorkflowOps, type WorkflowOp } from './workflow-ops.js';
+import { searchRemoteTemplates, getRemoteTemplate } from './templates-remote.js';
+import { parseToolsets, shouldRegister } from './toolsets.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -67,6 +72,13 @@ const server = new McpServer({
   version: packageJson.version,
 });
 
+const enabledTools = parseToolsets(process.env.N8N_TOOLSETS);
+
+function addTool(name: string, config: any, handler: (...args: any[]) => any) {
+  if (!shouldRegister(name, enabledTools)) return;
+  server.registerTool(name, config, handler);
+}
+
 // Shared schema fragments
 const nodeSchema = z.object({
   name: z.string(),
@@ -86,10 +98,10 @@ const listWorkflowFilters = {
 
 // ========== WORKFLOW TOOLS ==========
 
-server.registerTool(
+addTool(
   'n8n_create_workflow',
   {
-    description: 'Create a new workflow in n8n. You can specify nodes, connections, and settings.',
+    description: 'Create a new workflow in n8n. Prefer n8n_search_nodes + n8n_validate_workflow first so the JSON is valid. You can specify nodes, connections, and settings.',
     inputSchema: {
       name: z.string().describe('Name of the workflow'),
       nodes: z.array(nodeSchema).optional().describe('Array of workflow nodes (defaults to empty)'),
@@ -100,7 +112,7 @@ server.registerTool(
   async (args) => apiResult(await n8nClient.createWorkflow(args as any))
 );
 
-server.registerTool(
+addTool(
   'n8n_list_workflows',
   {
     description: 'List all workflows with full details. Can filter by active status, tags, name, or project. WARNING: Returns complete workflow data including nodes and connections - use n8n_list_workflows_summary for better token efficiency.',
@@ -113,7 +125,7 @@ server.registerTool(
   async (args) => apiResult(await n8nClient.getWorkflows(args))
 );
 
-server.registerTool(
+addTool(
   'n8n_list_workflows_summary',
   {
     description: 'List workflows with minimal data (id, name, active, tags, updatedAt only). Recommended for browsing and listing - uses 90% fewer tokens than n8n_list_workflows. Use n8n_get_workflow to fetch full details of a specific workflow.',
@@ -129,7 +141,7 @@ server.registerTool(
     )
 );
 
-server.registerTool(
+addTool(
   'n8n_get_workflow',
   {
     description: 'Get detailed information about a specific workflow by ID.',
@@ -139,7 +151,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.getWorkflow(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_update_workflow',
   {
     description: 'Update an existing workflow. Supports partial updates: omitted fields keep their current values (the current workflow is fetched and merged automatically).',
@@ -154,7 +166,7 @@ server.registerTool(
   async ({ id, ...updates }) => apiResult(await n8nClient.updateWorkflow(id, updates as any))
 );
 
-server.registerTool(
+addTool(
   'n8n_delete_workflow',
   {
     description: 'Delete a workflow permanently.',
@@ -164,7 +176,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.deleteWorkflow(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_activate_workflow',
   {
     description: 'Activate a workflow to start receiving triggers.',
@@ -173,7 +185,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.activateWorkflow(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_deactivate_workflow',
   {
     description: 'Deactivate a workflow to stop receiving triggers.',
@@ -182,7 +194,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.deactivateWorkflow(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_transfer_workflow',
   {
     description: 'Transfer a workflow to another project.',
@@ -195,7 +207,7 @@ server.registerTool(
     apiResult(await n8nClient.transferWorkflow(id, destinationProjectId))
 );
 
-server.registerTool(
+addTool(
   'n8n_get_workflow_tags',
   {
     description: 'Get all tags associated with a workflow.',
@@ -205,7 +217,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.getWorkflowTags(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_update_workflow_tags',
   {
     description: 'Update tags for a workflow.',
@@ -219,7 +231,7 @@ server.registerTool(
 
 // ========== EXECUTION TOOLS ==========
 
-server.registerTool(
+addTool(
   'n8n_list_executions',
   {
     description: 'List workflow executions. Can filter by status, workflow ID, or project. TIP: Set includeData=false and use fields parameter to reduce token usage.',
@@ -237,7 +249,7 @@ server.registerTool(
   async (args) => apiResult(await n8nClient.getExecutions(args))
 );
 
-server.registerTool(
+addTool(
   'n8n_get_execution',
   {
     description: 'Get detailed information about a specific execution.',
@@ -250,7 +262,7 @@ server.registerTool(
   async ({ id, includeData }) => apiResult(await n8nClient.getExecution(id, includeData))
 );
 
-server.registerTool(
+addTool(
   'n8n_delete_execution',
   {
     description: 'Delete an execution record.',
@@ -260,7 +272,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.deleteExecution(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_retry_execution',
   {
     description: 'Retry a failed execution.',
@@ -271,7 +283,7 @@ server.registerTool(
 
 // ========== CREDENTIAL TOOLS ==========
 
-server.registerTool(
+addTool(
   'n8n_create_credential',
   {
     description: 'Create a new credential for a specific node type.',
@@ -285,7 +297,7 @@ server.registerTool(
   async (args) => apiResult(await n8nClient.createCredential(args as any))
 );
 
-server.registerTool(
+addTool(
   'n8n_delete_credential',
   {
     description: 'Delete a credential (owner only).',
@@ -295,7 +307,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.deleteCredential(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_get_credential_schema',
   {
     description: 'Get the schema for a credential type to understand required fields.',
@@ -305,7 +317,7 @@ server.registerTool(
   async ({ credentialTypeName }) => apiResult(await n8nClient.getCredentialSchema(credentialTypeName))
 );
 
-server.registerTool(
+addTool(
   'n8n_transfer_credential',
   {
     description: 'Transfer a credential to another project.',
@@ -320,7 +332,7 @@ server.registerTool(
 
 // ========== TAG TOOLS ==========
 
-server.registerTool(
+addTool(
   'n8n_create_tag',
   {
     description: 'Create a new tag for organizing workflows.',
@@ -329,7 +341,7 @@ server.registerTool(
   async ({ name }) => apiResult(await n8nClient.createTag({ name }))
 );
 
-server.registerTool(
+addTool(
   'n8n_list_tags',
   {
     description: 'List all tags available in n8n.',
@@ -339,7 +351,7 @@ server.registerTool(
   async () => apiResult(await n8nClient.getTags())
 );
 
-server.registerTool(
+addTool(
   'n8n_get_tag',
   {
     description: 'Get information about a specific tag.',
@@ -349,7 +361,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.getTag(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_update_tag',
   {
     description: 'Update a tag name.',
@@ -361,7 +373,7 @@ server.registerTool(
   async ({ id, name }) => apiResult(await n8nClient.updateTag(id, { name }))
 );
 
-server.registerTool(
+addTool(
   'n8n_delete_tag',
   {
     description: 'Delete a tag.',
@@ -373,7 +385,7 @@ server.registerTool(
 
 // ========== VARIABLE TOOLS ==========
 
-server.registerTool(
+addTool(
   'n8n_create_variable',
   {
     description: 'Create a new environment variable in n8n.',
@@ -387,7 +399,7 @@ server.registerTool(
   async (args) => apiResult(await n8nClient.createVariable(args as any))
 );
 
-server.registerTool(
+addTool(
   'n8n_list_variables',
   {
     description: 'List all environment variables.',
@@ -400,7 +412,7 @@ server.registerTool(
   async (args) => apiResult(await n8nClient.getVariables(args))
 );
 
-server.registerTool(
+addTool(
   'n8n_update_variable',
   {
     description: 'Update an environment variable.',
@@ -414,7 +426,7 @@ server.registerTool(
   async ({ id, ...updates }) => apiResult(await n8nClient.updateVariable(id, updates as any))
 );
 
-server.registerTool(
+addTool(
   'n8n_delete_variable',
   {
     description: 'Delete an environment variable.',
@@ -426,7 +438,7 @@ server.registerTool(
 
 // ========== USER TOOLS ==========
 
-server.registerTool(
+addTool(
   'n8n_list_users',
   {
     description: 'List all users (owner only).',
@@ -438,7 +450,7 @@ server.registerTool(
   async ({ includeRole }) => apiResult(await n8nClient.getUsers(includeRole))
 );
 
-server.registerTool(
+addTool(
   'n8n_create_users',
   {
     description: 'Create multiple users at once.',
@@ -458,7 +470,7 @@ server.registerTool(
   async ({ users }) => apiResult(await n8nClient.createUsers(users as any))
 );
 
-server.registerTool(
+addTool(
   'n8n_get_user',
   {
     description: 'Get user by ID or email (owner only).',
@@ -468,7 +480,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.getUser(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_delete_user',
   {
     description: 'Delete a user.',
@@ -478,7 +490,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.deleteUser(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_change_user_role',
   {
     description: "Change a user's global role.",
@@ -492,7 +504,7 @@ server.registerTool(
 
 // ========== PROJECT TOOLS ==========
 
-server.registerTool(
+addTool(
   'n8n_create_project',
   {
     description: 'Create a new project in n8n.',
@@ -504,7 +516,7 @@ server.registerTool(
   async (args) => apiResult(await n8nClient.createProject(args as any))
 );
 
-server.registerTool(
+addTool(
   'n8n_list_projects',
   {
     description: 'List all projects.',
@@ -514,7 +526,7 @@ server.registerTool(
   async () => apiResult(await n8nClient.getProjects())
 );
 
-server.registerTool(
+addTool(
   'n8n_update_project',
   {
     description: 'Update a project.',
@@ -527,7 +539,7 @@ server.registerTool(
   async ({ id, ...updates }) => apiResult(await n8nClient.updateProject(id, updates as any))
 );
 
-server.registerTool(
+addTool(
   'n8n_delete_project',
   {
     description: 'Delete a project.',
@@ -537,7 +549,7 @@ server.registerTool(
   async ({ id }) => apiResult(await n8nClient.deleteProject(id))
 );
 
-server.registerTool(
+addTool(
   'n8n_add_user_to_project',
   {
     description: 'Add a user to a project with a specific role.',
@@ -551,7 +563,7 @@ server.registerTool(
     apiResult(await n8nClient.addUserToProject(projectId, userId, role))
 );
 
-server.registerTool(
+addTool(
   'n8n_remove_user_from_project',
   {
     description: 'Remove a user from a project.',
@@ -565,7 +577,7 @@ server.registerTool(
     apiResult(await n8nClient.removeUserFromProject(projectId, userId))
 );
 
-server.registerTool(
+addTool(
   'n8n_change_user_project_role',
   {
     description: "Change a user's role within a project.",
@@ -581,7 +593,7 @@ server.registerTool(
 
 // ========== OTHER TOOLS ==========
 
-server.registerTool(
+addTool(
   'n8n_generate_audit',
   {
     description: 'Generate a security audit report.',
@@ -591,7 +603,7 @@ server.registerTool(
   async () => apiResult(await n8nClient.generateAudit())
 );
 
-server.registerTool(
+addTool(
   'n8n_pull_source_control',
   {
     description: 'Pull changes from remote source control repository.',
@@ -602,7 +614,7 @@ server.registerTool(
 
 // ========== WORKFLOW TEMPLATE TOOLS ==========
 
-server.registerTool(
+addTool(
   'n8n_list_workflow_templates',
   {
     description: 'List available workflow templates with their metadata. Use this to discover what pre-built workflows are available.',
@@ -648,7 +660,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+addTool(
   'n8n_get_workflow_template',
   {
     description: 'Get a specific workflow template by ID or intelligently find the best matching template based on user requirements.',
@@ -680,7 +692,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+addTool(
   'n8n_create_workflow_from_template',
   {
     description: 'Create a new workflow in n8n based on a template. Automatically selects the best template if not specified.',
@@ -739,12 +751,200 @@ server.registerTool(
   }
 );
 
+// ========== BUILDER TOOLS ==========
+
+addTool(
+  'n8n_search_nodes',
+  {
+    description: 'Search the built-in catalog of the most used n8n nodes (type, required params, docs, example). Use this BEFORE creating a workflow so node types are correct.',
+    inputSchema: {
+      query: z.string().describe('What the node should do (e.g. "slack", "http", "webhook", "schedule")'),
+      limit: z.number().int().positive().max(20).optional().describe('Max results (default 8)'),
+    },
+    annotations: readOnly,
+  },
+  async ({ query, limit }) =>
+    jsonResult({
+      nodes: searchNodes(query, limit ?? 8).map(summarizeNode),
+    })
+);
+
+addTool(
+  'n8n_get_node',
+  {
+    description: 'Get schema, required parameters, docs and an example for a specific n8n node type.',
+    inputSchema: {
+      type: z.string().describe('Node type or alias (e.g. "n8n-nodes-base.slack" or "webhook")'),
+    },
+    annotations: readOnly,
+  },
+  async ({ type }) => {
+    const node = getNode(type);
+    if (!node) {
+      return errorResult({
+        error: `Unknown node "${type}"`,
+        suggestion: 'Use n8n_search_nodes to find the correct type',
+      });
+    }
+    return jsonResult(summarizeNode(node));
+  }
+);
+
+addTool(
+  'n8n_validate_workflow',
+  {
+    description: 'Validate a workflow JSON before creating or updating it. Checks node names, types, required parameters, and connections. Always call this before n8n_create_workflow or n8n_activate_workflow.',
+    inputSchema: {
+      name: z.string().optional(),
+      nodes: z.array(z.any()).optional(),
+      connections: z.record(z.any()).optional(),
+      workflowId: z.string().optional().describe('If set, validate the workflow already stored in n8n'),
+    },
+    annotations: readOnly,
+  },
+  async (args) => {
+    let workflow = { name: args.name, nodes: args.nodes, connections: args.connections };
+    if (args.workflowId) {
+      const stored = await n8nClient.getWorkflow(args.workflowId);
+      if (stored.error) return errorResult({ error: stored.error });
+      workflow = {
+        name: stored.data.name,
+        nodes: stored.data.nodes,
+        connections: stored.data.connections,
+      };
+    }
+    const result = validateWorkflow(workflow);
+    return result.valid ? jsonResult(result) : errorResult(result);
+  }
+);
+
+addTool(
+  'n8n_update_workflow_partial',
+  {
+    description: 'Apply surgical edits to an existing workflow without rewriting it. Operations: setName, addNode, removeNode, updateNode, addConnection, removeConnection. Fetches the current workflow, applies the ops, and saves.',
+    inputSchema: {
+      id: z.string().describe('Workflow ID'),
+      operations: z
+        .array(
+          z.object({
+            op: z.enum(['setName', 'addNode', 'removeNode', 'updateNode', 'addConnection', 'removeConnection']),
+            name: z.string().optional(),
+            node: z.record(z.any()).optional(),
+            parameters: z.record(z.any()).optional(),
+            typeVersion: z.number().optional(),
+            source: z.string().optional(),
+            target: z.string().optional(),
+            sourceOutput: z.number().optional(),
+            targetInput: z.number().optional(),
+          })
+        )
+        .describe('List of edits to apply in order'),
+      validate: z.boolean().optional().describe('Validate before saving (default true)'),
+    },
+  },
+  async ({ id, operations, validate }) => {
+    const current = await n8nClient.getWorkflow(id);
+    if (current.error) return errorResult({ error: current.error });
+
+    const applied = applyWorkflowOps(current.data, operations as WorkflowOp[]);
+    if (applied.errors.length > 0) {
+      return errorResult({ error: 'Some operations failed', details: applied.errors });
+    }
+
+    if (validate !== false) {
+      const check = validateWorkflow(applied.workflow);
+      if (!check.valid) {
+        return errorResult({
+          error: 'Updated workflow is invalid; not saved',
+          validation: check,
+        });
+      }
+    }
+
+    return apiResult(await n8nClient.updateWorkflow(id, applied.workflow));
+  }
+);
+
+addTool(
+  'n8n_debug_last_error',
+  {
+    description: 'Get the most recent failed execution (optionally for one workflow) with the failing node and error message. Use this to repair a broken workflow.',
+    inputSchema: {
+      workflowId: z.string().optional().describe('Limit to one workflow'),
+    },
+    annotations: readOnly,
+  },
+  async ({ workflowId }) => apiResult(await n8nClient.debugLastError(workflowId))
+);
+
+addTool(
+  'n8n_search_public_templates',
+  {
+    description: 'Search official n8n.io workflow templates (thousands, always current). Returns summaries only. Then use n8n_import_public_template to copy one into the instance.',
+    inputSchema: {
+      query: z.string().describe('What the workflow should do'),
+      limit: z.number().int().positive().max(20).optional(),
+    },
+    annotations: readOnly,
+  },
+  async ({ query, limit }) => {
+    try {
+      return jsonResult({ templates: await searchRemoteTemplates(query, limit ?? 8) });
+    } catch (error: any) {
+      return errorResult({ error: error.message || 'Failed to search public templates' });
+    }
+  }
+);
+
+addTool(
+  'n8n_import_public_template',
+  {
+    description: 'Download an official n8n.io template by ID and create it as a workflow in this instance. Credentials still have to be attached in n8n.',
+    inputSchema: {
+      templateId: z.string().describe('Numeric ID from n8n_search_public_templates'),
+      workflowName: z.string().optional(),
+      activate: z.boolean().optional(),
+    },
+  },
+  async ({ templateId, workflowName, activate }) => {
+    try {
+      const template = await getRemoteTemplate(templateId);
+      const created = await n8nClient.createWorkflow({
+        name: workflowName || template.name,
+        nodes: template.nodes,
+        connections: template.connections,
+        settings: template.settings,
+      });
+      if (created.error) return errorResult({ error: created.error, template });
+      if (activate && created.data?.id) {
+        const activation = await n8nClient.activateWorkflow(created.data.id);
+        if (activation.error) {
+          return jsonResult({
+            workflow: created.data,
+            activationError: activation.error,
+            message: 'Imported but activation failed (usually missing credentials)',
+            source: template.url,
+          });
+        }
+      }
+      return jsonResult({
+        success: true,
+        workflow: created.data,
+        source: template.url,
+        message: `Imported "${template.name}" from n8n.io`,
+      });
+    } catch (error: any) {
+      return errorResult({ error: error.message || 'Failed to import template' });
+    }
+  }
+);
+
 // ========== START SERVER ==========
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('n8n MCP Server running on stdio');
+  console.error(`n8n MCP Server running on stdio (${enabledTools.size} tools, N8N_TOOLSETS=${process.env.N8N_TOOLSETS || 'all'})`);
 }
 
 main().catch((error) => {

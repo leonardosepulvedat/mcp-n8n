@@ -1,7 +1,7 @@
 {
   "name": "mcp-n8n",
-  "version": "1.2.1",
-  "description": "MCP server for n8n API - Complete integration for workflow automation",
+  "version": "1.3.0",
+  "description": "MCP server for n8n: operate the instance and build validated workflows",
   "type": "module",
   "main": "dist/index.js",
   "bin": {

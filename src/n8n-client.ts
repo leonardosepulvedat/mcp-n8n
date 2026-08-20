@@ -206,6 +206,48 @@ export class N8nClient {
     }
   }
 
+  async debugLastError(workflowId?: string): Promise<ApiResponse> {
+    try {
+      const list = await this.client.get('/executions', {
+        params: {
+          status: 'error',
+          ...(workflowId ? { workflowId } : {}),
+          limit: 1,
+        },
+      });
+      const execution = list.data?.data?.[0];
+      if (!execution) {
+        return { data: { message: 'No failed executions found' } };
+      }
+      const full = await this.client.get(`/executions/${execution.id}`, {
+        params: { includeData: true },
+      });
+      const data = full.data;
+      const resultData = data.data?.resultData ?? data.resultData;
+      const error = resultData?.error;
+      return {
+        data: {
+          executionId: data.id ?? execution.id,
+          workflowId: data.workflowId ?? execution.workflowId,
+          status: data.status ?? execution.status,
+          stoppedAt: data.stoppedAt ?? execution.stoppedAt,
+          lastNodeExecuted: resultData?.lastNodeExecuted,
+          error: error
+            ? {
+                message: error.message,
+                name: error.name,
+                node: error.node?.name ?? error.node,
+                description: error.description,
+              }
+            : undefined,
+          hint: 'Fix the node named in lastNodeExecuted, then call n8n_validate_workflow and n8n_update_workflow_partial.',
+        },
+      };
+    } catch (error: any) {
+      return { error: error.response?.data?.message || error.message };
+    }
+  }
+
   async retryExecution(id: string): Promise<ApiResponse> {
     try {
       const response = await this.client.post(`/executions/${id}/retry`);

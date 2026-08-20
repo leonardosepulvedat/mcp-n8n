@@ -6,9 +6,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![n8n](https://img.shields.io/badge/n8n-compatible-orange.svg)](https://n8n.io)
 
-**Complete n8n API integration for Claude Desktop and Cursor** - Manage workflows, automate tasks, and control every aspect of n8n directly through AI conversations.
+**Operate and build n8n from Cursor or Claude** — administration of your instance (users, projects, executions, audit) **and** a builder loop so the agent can look up nodes, validate JSON, apply small edits, and debug the last failure.
 
-Transform your n8n workflow management with natural language commands. Create complex automations, monitor executions, manage credentials, and orchestrate your entire n8n infrastructure without leaving your IDE.
+Two env vars. Runs on your machine. No hosted account.
 
 ---
 
@@ -47,11 +47,15 @@ Transform your n8n workflow management with natural language commands. Create co
 - **Project Isolation**: Transfer credentials between projects safely
 - **Type Support**: Compatible with all n8n credential types
 
-### 🎯 Workflow Templates
-- **Pre-built Solutions**: 100 production-ready workflow templates included
-- **Smart Matching**: AI automatically selects the best template for your use case
-- **Categories**: E-commerce, Social Media, AI/Chat, Communication, Content, HR, Sales/CRM, Finance, Data Scraping, Monitoring, Productivity
-- **Customizable**: All templates are fully customizable starting points
+### 🧱 Workflow Builder
+- **Node catalog**: search the most used n8n nodes (`n8n_search_nodes`, `n8n_get_node`) with required params and examples
+- **Validation**: `n8n_validate_workflow` catches missing params, broken connections and unknown types *before* save/activate
+- **Surgical edits**: `n8n_update_workflow_partial` adds/removes nodes and connections without rewriting the whole flow
+- **Debug loop**: `n8n_debug_last_error` returns the failing node and message from the last error
+- **Public templates**: search and import from n8n.io (`n8n_search_public_templates`, `n8n_import_public_template`) plus 100 bundled templates as a fallback
+
+### 🎯 Bundled Templates
+- 100 local starting points with keyword matching, if you prefer not to hit n8n.io
 
 ### 🏗️ Organization & Administration
 - **Tags**: Categorize and organize resources
@@ -90,12 +94,15 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (Mac/Li
       "command": "mcp-n8n",
       "env": {
         "N8N_BASE_URL": "https://your-n8n-instance.com",
-        "N8N_API_KEY": "your-api-key-here"
+        "N8N_API_KEY": "your-api-key-here",
+        "N8N_TOOLSETS": "all"
       }
     }
   }
 }
 ```
+
+`N8N_TOOLSETS` is optional (`all` by default). Use `core,builder` if you want operations + creation without user/project admin tools. Use `admin` only for instance administration.
 
 **Option B - Using npx (no installation needed, always latest version):**
 ```json
@@ -206,28 +213,27 @@ generates charts, and emails them to my team"
 ## 🛠️ Available Tools
 
 <details>
-<summary><strong>Workflows (11 tools)</strong></summary>
+<summary><strong>Workflows</strong></summary>
 
-- `n8n_create_workflow` - Create new workflows
-- `n8n_list_workflows_summary` - ⚡ **Token-efficient** listing (id, name, active, tags only)
-- `n8n_list_workflows` - List with full details and optional field filtering
-- `n8n_get_workflow` - Get detailed workflow information
-- `n8n_update_workflow` - Modify existing workflows (supports partial updates: omitted fields keep their current values)
+- `n8n_create_workflow` - Create new workflows (validate first)
+- `n8n_list_workflows_summary` - Token-efficient listing
+- `n8n_list_workflows` - Full details with optional field filtering
+- `n8n_get_workflow` - Full workflow JSON
+- `n8n_update_workflow` - Replace fields (omitted fields keep current values)
+- `n8n_update_workflow_partial` - Surgical edits: add/remove nodes and connections
 - `n8n_delete_workflow` - Remove workflows permanently
-- `n8n_activate_workflow` - Enable workflow execution
-- `n8n_deactivate_workflow` - Pause workflow execution
-- `n8n_transfer_workflow` - Move between projects
-- `n8n_get_workflow_tags` - View workflow tags
-- `n8n_update_workflow_tags` - Modify workflow tags
+- `n8n_activate_workflow` / `n8n_deactivate_workflow`
+- `n8n_transfer_workflow` / tags tools
 
 </details>
 
 <details>
-<summary><strong>Workflow Templates (3 tools)</strong></summary>
+<summary><strong>Builder</strong></summary>
 
-- `n8n_list_workflow_templates` - Browse available templates
-- `n8n_get_workflow_template` - View template details
-- `n8n_create_workflow_from_template` - Create from template
+- `n8n_search_nodes` / `n8n_get_node` - Catalog of the most used nodes
+- `n8n_validate_workflow` - Check JSON before save/activate
+- `n8n_search_public_templates` / `n8n_import_public_template` - Official n8n.io library
+- `n8n_list_workflow_templates` / `n8n_get_workflow_template` / `n8n_create_workflow_from_template` - Bundled templates
 
 **100 Included Templates across 13 categories**:
 - E-commerce: Shopify automation, WooCommerce support agents
@@ -251,6 +257,7 @@ generates charts, and emails them to my team"
 - `n8n_get_execution` - Detailed execution data
 - `n8n_delete_execution` - Remove execution records
 - `n8n_retry_execution` - Retry failed executions
+- `n8n_debug_last_error` - Failing node + message from the last error
 
 </details>
 
@@ -282,7 +289,7 @@ generates charts, and emails them to my team"
 
 </details>
 
-**Total: 41 tools** for complete n8n management
+**52 tools** by default (`N8N_TOOLSETS=all`). `core,builder` exposes 21.
 
 ---
 
