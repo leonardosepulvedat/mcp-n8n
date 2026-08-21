@@ -13,15 +13,53 @@ import type {
 
 export class N8nClient {
   private client: AxiosInstance;
+  private baseUrl: string;
 
   constructor(config: N8nConfig) {
+    this.baseUrl = config.baseUrl.replace(/\/+$/, '');
     this.client = axios.create({
-      baseURL: `${config.baseUrl}/api/v1`,
+      baseURL: `${this.baseUrl}/api/v1`,
       headers: {
         'X-N8N-API-KEY': config.apiKey,
         'Content-Type': 'application/json',
       },
     });
+  }
+
+  /**
+   * Calls a Webhook-trigger workflow directly so the agent can test it
+   * end-to-end. `test` uses the /webhook-test/ path, which only works while
+   * the workflow is open in "Listen for test event" mode in the editor;
+   * production requires the workflow to be active.
+   */
+  async triggerWebhook(options: {
+    path: string;
+    method?: string;
+    body?: any;
+    test?: boolean;
+  }): Promise<ApiResponse> {
+    try {
+      const prefix = options.test ? 'webhook-test' : 'webhook';
+      const cleanPath = options.path.replace(/^\/+/, '');
+      const url = `${this.baseUrl}/${prefix}/${cleanPath}`;
+      const method = (options.method ?? 'POST').toLowerCase();
+      const response = await axios.request({
+        url,
+        method,
+        data: options.body,
+        timeout: 30000,
+        validateStatus: () => true,
+      });
+      return {
+        data: {
+          url,
+          status: response.status,
+          body: response.data,
+        },
+      };
+    } catch (error: any) {
+      return { error: error.response?.data?.message || error.message };
+    }
   }
 
   // ========== WORKFLOWS ==========

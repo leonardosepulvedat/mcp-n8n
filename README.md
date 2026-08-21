@@ -48,11 +48,17 @@ Two env vars. Runs on your machine. No hosted account.
 - **Type Support**: Compatible with all n8n credential types
 
 ### 🧱 Workflow Builder
-- **Node catalog**: search the most used n8n nodes (`n8n_search_nodes`, `n8n_get_node`) with required params and examples
+- **Node catalog**: search ~60 of the most used n8n nodes (`n8n_search_nodes`, `n8n_get_node`) with required params, docs and examples — triggers, data utilities, databases, Google/Microsoft, messaging, and LangChain AI nodes
 - **Validation**: `n8n_validate_workflow` catches missing params, broken connections and unknown types *before* save/activate
 - **Surgical edits**: `n8n_update_workflow_partial` adds/removes nodes and connections without rewriting the whole flow
 - **Debug loop**: `n8n_debug_last_error` returns the failing node and message from the last error
 - **Public templates**: search and import from n8n.io (`n8n_search_public_templates`, `n8n_import_public_template`) plus 100 bundled templates as a fallback
+- **Guided prompts**: MCP prompts `build-workflow` and `fix-workflow` walk any agent through the full build/validate/test/repair loop
+
+### 🛡️ Safety Net & Real Testing
+- **Automatic snapshots**: before every update, partial edit, or delete, the previous state is saved locally (`~/.mcp-n8n/snapshots`, configurable with `N8N_SNAPSHOT_DIR`)
+- **Rollback**: `n8n_rollback_workflow` restores any snapshot — even recreates a deleted workflow (`recreate=true`)
+- **End-to-end testing**: `n8n_trigger_webhook` calls a Webhook-trigger workflow on the instance and returns the real HTTP response, so the agent can verify the flow actually works
 
 ### 🎯 Bundled Templates
 - 100 local starting points with keyword matching, if you prefer not to hit n8n.io
@@ -142,6 +148,34 @@ Add to Cursor MCP settings (Settings → Extensions → MCP):
 
 > **Note**: Cursor requires using `npx` for MCP servers. The `-y` flag automatically installs/updates the package without prompting.
 
+**Option C - Docker:**
+
+```bash
+docker build -t mcp-n8n .
+```
+
+```json
+{
+  "mcpServers": {
+    "n8n": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "N8N_BASE_URL", "-e", "N8N_API_KEY",
+        "-v", "mcp-n8n-data:/data",
+        "mcp-n8n"
+      ],
+      "env": {
+        "N8N_BASE_URL": "https://your-n8n-instance.com",
+        "N8N_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
+```
+
+The `/data` volume persists workflow snapshots between runs.
+
 4. **Restart Claude Desktop or Cursor**
 
 ---
@@ -228,6 +262,15 @@ generates charts, and emails them to my team"
 </details>
 
 <details>
+<summary><strong>Safety & Testing</strong></summary>
+
+- `n8n_list_workflow_snapshots` - Local history of every change made through this server
+- `n8n_rollback_workflow` - Restore a previous version, or recreate a deleted workflow
+- `n8n_trigger_webhook` - Call a webhook workflow and get the real response
+
+</details>
+
+<details>
 <summary><strong>Builder</strong></summary>
 
 - `n8n_search_nodes` / `n8n_get_node` - Catalog of the most used nodes
@@ -289,7 +332,7 @@ generates charts, and emails them to my team"
 
 </details>
 
-**52 tools** by default (`N8N_TOOLSETS=all`). `core,builder` exposes 21.
+**55 tools** by default (`N8N_TOOLSETS=all`). `core,builder` exposes 24. Plus 2 MCP prompts (`build-workflow`, `fix-workflow`).
 
 ---
 

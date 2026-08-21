@@ -18,6 +18,7 @@ import { validateWorkflow } from './validate.js';
 import { applyWorkflowOps, type WorkflowOp } from './workflow-ops.js';
 import { searchRemoteTemplates, getRemoteTemplate } from './templates-remote.js';
 import { parseToolsets, shouldRegister } from './toolsets.js';
+import { saveSnapshot, listSnapshots, loadSnapshot } from './snapshots.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -163,17 +164,25 @@ addTool(
       settings: z.record(z.any()).optional().describe('Updated settings'),
     },
   },
-  async ({ id, ...updates }) => apiResult(await n8nClient.updateWorkflow(id, updates as any))
+  async ({ id, ...updates }) => {
+    const current = await n8nClient.getWorkflow(id);
+    if (!current.error) saveSnapshot(id, current.data, 'before update');
+    return apiResult(await n8nClient.updateWorkflow(id, updates as any));
+  }
 );
 
 addTool(
   'n8n_delete_workflow',
   {
-    description: 'Delete a workflow permanently.',
+    description: 'Delete a workflow permanently. A local snapshot is saved first so it can be restored with n8n_rollback_workflow (into a new workflow).',
     inputSchema: { id: z.string().describe('Workflow ID to delete') },
     annotations: destructive,
   },
-  async ({ id }) => apiResult(await n8nClient.deleteWorkflow(id))
+  async ({ id }) => {
+    const current = await n8nClient.getWorkflow(id);
+    if (!current.error) saveSnapshot(id, current.data, 'before delete');
+    return apiResult(await n8nClient.deleteWorkflow(id));
+  }
 );
 
 addTool(
@@ -845,6 +854,7 @@ addTool(
   async ({ id, operations, validate }) => {
     const current = await n8nClient.getWorkflow(id);
     if (current.error) return errorResult({ error: current.error });
+    saveSnapshot(id, current.data, 'before partial update');
 
     const applied = applyWorkflowOps(current.data, operations as WorkflowOp[]);
     if (applied.errors.length > 0) {
@@ -937,6 +947,161 @@ addTool(
       return errorResult({ error: error.message || 'Failed to import template' });
     }
   }
+);
+
+// ========== TESTING & SAFETY TOOLS ==========
+
+addTool(
+  'n8n_trigger_webhook',
+  {
+    description: 'Call a Webhook-trigger workflow on the n8n instance to test it end-to-end and see the real response. Use test=true only while the workflow is in "Listen for test event" mode in the editor; otherwise the workflow must be active.',
+    inputSchema: {
+      path: z.string().describe('Webhook path as configured in the Webhook node (e.g. "my-hook" or a UUID)'),
+      method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional().describe('HTTP method (default POST)'),
+      body: z.record(z.any()).optional().describe('JSON body to send'),
+      test: z.boolean().optional().describe('Use the /webhook-test/ path instead of /webhook/'),
+    },
+  },
+  async (args) => apiResult(await n8nClient.triggerWebhook(args as any))
+);
+
+addTool(
+  'n8n_list_workflow_snapshots',
+  {
+    description: 'List local snapshots of a workflow. A snapshot is saved automatically before every update, partial update, or delete done through this server.',
+    inputSchema: { id: z.string().describe('Workflow ID') },
+    annotations: readOnly,
+  },
+  async ({ id }) => {
+    const snapshots = listSnapshots(id);
+    return jsonResult({
+      workflowId: id,
+      snapshots: snapshots.map(({ timestamp, reason, name }) => ({ timestamp, reason, name })),
+      total: snapshots.length,
+    });
+  }
+);
+
+addTool(
+  'n8n_rollback_workflow',
+  {
+    description: 'Restore a workflow to a previous snapshot (latest by default). The current state is snapshotted first, so a rollback can itself be undone. If the workflow was deleted, set recreate=true to restore it as a new workflow.',
+    inputSchema: {
+      id: z.string().describe('Workflow ID'),
+      timestamp: z.string().optional().describe('Snapshot timestamp from n8n_list_workflow_snapshots (default: most recent)'),
+      recreate: z.boolean().optional().describe('Create a new workflow from the snapshot instead of updating (for deleted workflows)'),
+    },
+  },
+  async ({ id, timestamp, recreate }) => {
+    const snapshot = loadSnapshot(id, timestamp);
+    if (!snapshot) {
+      return errorResult({
+        error: `No snapshot found for workflow ${id}${timestamp ? ` at ${timestamp}` : ''}`,
+        suggestion: 'Use n8n_list_workflow_snapshots to see what is available',
+      });
+    }
+
+    if (recreate) {
+      const created = await n8nClient.createWorkflow({
+        name: snapshot.workflow.name,
+        nodes: snapshot.workflow.nodes,
+        connections: snapshot.workflow.connections,
+        settings: snapshot.workflow.settings,
+      });
+      if (created.error) return errorResult({ error: created.error });
+      return jsonResult({
+        success: true,
+        restoredFrom: snapshot.info.timestamp,
+        workflow: created.data,
+        message: 'Snapshot restored as a new workflow',
+      });
+    }
+
+    const current = await n8nClient.getWorkflow(id);
+    if (current.error) {
+      return errorResult({
+        error: current.error,
+        suggestion: 'If the workflow was deleted, retry with recreate=true',
+      });
+    }
+    saveSnapshot(id, current.data, 'before rollback');
+
+    const updated = await n8nClient.updateWorkflow(id, {
+      name: snapshot.workflow.name,
+      nodes: snapshot.workflow.nodes,
+      connections: snapshot.workflow.connections,
+      settings: snapshot.workflow.settings,
+    });
+    if (updated.error) return errorResult({ error: updated.error });
+    return jsonResult({
+      success: true,
+      restoredFrom: snapshot.info.timestamp,
+      reason: snapshot.info.reason,
+      workflow: updated.data,
+    });
+  }
+);
+
+// ========== GUIDED PROMPTS ==========
+
+server.registerPrompt(
+  'build-workflow',
+  {
+    title: 'Build an n8n workflow',
+    description: 'Guided flow to build a validated, working n8n workflow from a plain-language description.',
+    argsSchema: { goal: z.string().describe('What the workflow should do') },
+  },
+  ({ goal }) => ({
+    messages: [
+      {
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: [
+            `Build an n8n workflow that does the following: ${goal}`,
+            '',
+            'Follow this process strictly:',
+            '1. Check n8n_search_public_templates and n8n_list_workflow_templates for an existing template that matches; importing beats building from scratch.',
+            '2. If building: use n8n_search_nodes / n8n_get_node to get the exact node types and required parameters. Never guess a node type.',
+            '3. Draft the workflow JSON and run n8n_validate_workflow. Fix every error before saving.',
+            '4. Create it with n8n_create_workflow. For later edits prefer n8n_update_workflow_partial.',
+            '5. If it has a Webhook trigger, test it with n8n_trigger_webhook and check the response.',
+            '6. If an execution fails, use n8n_debug_last_error to find the failing node, fix it, and re-test.',
+            '7. Only activate (n8n_activate_workflow) once validation passes and credentials are attached.',
+          ].join('\n'),
+        },
+      },
+    ],
+  })
+);
+
+server.registerPrompt(
+  'fix-workflow',
+  {
+    title: 'Diagnose and fix a failing n8n workflow',
+    description: 'Guided flow to find why a workflow is failing and repair it safely.',
+    argsSchema: { workflowId: z.string().describe('ID of the failing workflow') },
+  },
+  ({ workflowId }) => ({
+    messages: [
+      {
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: [
+            `Diagnose and fix n8n workflow ${workflowId}.`,
+            '',
+            'Follow this process strictly:',
+            `1. Run n8n_debug_last_error with workflowId=${workflowId} to get the failing node and error message.`,
+            '2. Fetch the workflow with n8n_get_workflow and inspect the failing node; use n8n_get_node to check its required parameters.',
+            '3. Apply the smallest possible fix with n8n_update_workflow_partial (a snapshot is saved automatically, so the change is reversible with n8n_rollback_workflow).',
+            '4. Validate with n8n_validate_workflow, then re-test (n8n_trigger_webhook if it has a webhook, or n8n_retry_execution on the failed execution).',
+            '5. Report what was broken, what changed, and the evidence that it now works.',
+          ].join('\n'),
+        },
+      },
+    ],
+  })
 );
 
 // ========== START SERVER ==========

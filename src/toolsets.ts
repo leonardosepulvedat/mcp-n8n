@@ -15,6 +15,9 @@ const TOOLSETS: Record<ToolsetName, string[]> = {
     'n8n_get_execution',
     'n8n_retry_execution',
     'n8n_debug_last_error',
+    'n8n_trigger_webhook',
+    'n8n_list_workflow_snapshots',
+    'n8n_rollback_workflow',
   ],
   builder: [
     'n8n_search_nodes',

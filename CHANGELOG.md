@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-20
+
+### Added
+- Automatic local snapshots: before every workflow update, partial edit, or delete, the previous state is saved to `~/.mcp-n8n/snapshots` (configurable via `N8N_SNAPSHOT_DIR`, last 20 per workflow).
+- `n8n_rollback_workflow` restores any snapshot, including recreating a deleted workflow (`recreate=true`), and `n8n_list_workflow_snapshots` lists the local history.
+- `n8n_trigger_webhook` calls a Webhook-trigger workflow on the instance (production or test URL) and returns the real HTTP response, enabling true end-to-end testing by agents.
+- MCP prompts `build-workflow` and `fix-workflow` that guide any client through the full build/validate/test/repair loop.
+- Node catalog expanded from 19 to ~60 entries: more triggers (Gmail, Telegram, Error, Form, Chat, IMAP), data utilities (Wait, Filter, Split Out, Aggregate, Sort, Limit, Remove Duplicates, Date & Time, HTML, Markdown, Extract/Convert File), databases (Postgres, MySQL, MongoDB, Redis, Supabase, Airtable, Notion, S3), Google/Microsoft apps, messaging (Discord, WhatsApp, Twilio, Teams, Outlook), business apps (GitHub, Jira, HubSpot, Stripe, Shopify, WordPress, YouTube), and LangChain AI sub-nodes (OpenAI Chat Model, Simple Memory).
+- Dockerfile with a persistent `/data` volume for snapshots.
+- GitHub Actions workflow that publishes to npm (with provenance) when a release is published.
+
 ## [1.3.0] - 2026-08-20
 
 ### Added
