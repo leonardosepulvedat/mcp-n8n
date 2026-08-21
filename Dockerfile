@@ -13,6 +13,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY examples ./examples
+COPY data ./data
 
 # Snapshots are written here; mount a volume to persist them
 ENV N8N_SNAPSHOT_DIR=/data/snapshots

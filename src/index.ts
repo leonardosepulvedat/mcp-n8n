@@ -2,10 +2,13 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { readFileSync } from 'fs';
+import { readFileSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { homedir } from 'os';
+import { createServer as createHttpServer } from 'http';
 import { N8nClient } from './n8n-client.js';
 import type { ApiResponse } from './types.js';
 import {
@@ -13,12 +16,15 @@ import {
   loadTemplateFile,
   resolveTemplate,
 } from './templates.js';
-import { searchNodes, getNode, summarizeNode } from './node-catalog.js';
+import { searchNodes, getNode, catalogStats } from './node-catalog.js';
 import { validateWorkflow } from './validate.js';
 import { applyWorkflowOps, type WorkflowOp } from './workflow-ops.js';
 import { searchRemoteTemplates, getRemoteTemplate } from './templates-remote.js';
 import { parseToolsets, shouldRegister } from './toolsets.js';
 import { saveSnapshot, listSnapshots, loadSnapshot } from './snapshots.js';
+import { autofixWorkflow } from './autofix.js';
+import { diffWorkflows } from './diff.js';
+import { computeHealth } from './health.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -68,16 +74,35 @@ const destructive = { destructiveHint: true };
 
 // ========== SERVER ==========
 
-const server = new McpServer({
-  name: 'mcp-n8n',
-  version: packageJson.version,
-});
-
+// Tool/prompt registrations are collected first so the server can be
+// instantiated per-transport (stdio uses one instance; HTTP mode creates a
+// fresh instance per request, as recommended for stateless operation).
 const enabledTools = parseToolsets(process.env.N8N_TOOLSETS);
+
+const toolRegistrations: { name: string; config: any; handler: (...args: any[]) => any }[] = [];
+const promptRegistrations: { name: string; config: any; cb: (...args: any[]) => any }[] = [];
 
 function addTool(name: string, config: any, handler: (...args: any[]) => any) {
   if (!shouldRegister(name, enabledTools)) return;
-  server.registerTool(name, config, handler);
+  toolRegistrations.push({ name, config, handler });
+}
+
+function addPrompt(name: string, config: any, cb: (...args: any[]) => any) {
+  promptRegistrations.push({ name, config, cb });
+}
+
+function buildServer(): McpServer {
+  const server = new McpServer({
+    name: 'mcp-n8n',
+    version: packageJson.version,
+  });
+  for (const tool of toolRegistrations) {
+    server.registerTool(tool.name, tool.config, tool.handler);
+  }
+  for (const prompt of promptRegistrations) {
+    server.registerPrompt(prompt.name, prompt.config, prompt.cb);
+  }
+  return server;
 }
 
 // Shared schema fragments
@@ -621,6 +646,97 @@ addTool(
   async () => apiResult(await n8nClient.pullSourceControl())
 );
 
+addTool(
+  'n8n_export_all_workflows',
+  {
+    description: 'Back up every workflow of the instance as individual JSON files in a local directory. Complements the per-change snapshots with a full-instance safety net.',
+    inputSchema: {
+      directory: z.string().optional().describe('Target directory (default: ~/.mcp-n8n/backups/<timestamp>)'),
+    },
+    annotations: readOnly,
+  },
+  async ({ directory }) => {
+    const all = await n8nClient.getAllWorkflows();
+    if (all.error) return errorResult({ error: all.error });
+
+    const dir =
+      directory ||
+      join(homedir(), '.mcp-n8n', 'backups', new Date().toISOString().replace(/[:.]/g, '-'));
+    mkdirSync(dir, { recursive: true });
+
+    const exported: { id: string; name: string; file: string }[] = [];
+    for (const workflow of all.data) {
+      const safeName = String(workflow.name ?? 'workflow')
+        .replace(/[^a-zA-Z0-9-_ ]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .slice(0, 60);
+      const file = `${workflow.id}-${safeName}.json`;
+      writeFileSync(join(dir, file), JSON.stringify(workflow, null, 2));
+      exported.push({ id: workflow.id, name: workflow.name, file });
+    }
+
+    return jsonResult({
+      directory: dir,
+      count: exported.length,
+      workflows: exported.slice(0, 50),
+      ...(exported.length > 50 && { note: `Showing 50 of ${exported.length}` }),
+    });
+  }
+);
+
+addTool(
+  'n8n_import_workflows',
+  {
+    description: 'Import workflow JSON files from a local directory (e.g. a backup created with n8n_export_all_workflows) as new workflows in the instance.',
+    inputSchema: {
+      directory: z.string().describe('Directory containing .json workflow files'),
+      activate: z.boolean().optional().describe('Activate workflows that were active in the backup (default false)'),
+    },
+  },
+  async ({ directory, activate }) => {
+    let files: string[];
+    try {
+      files = readdirSync(directory).filter((f) => f.endsWith('.json'));
+    } catch (error: any) {
+      return errorResult({ error: `Cannot read directory: ${error.message}` });
+    }
+    if (files.length === 0) return errorResult({ error: 'No .json files found in the directory' });
+
+    const created: { file: string; id?: string; name?: string; activated?: boolean; error?: string }[] = [];
+    for (const file of files) {
+      try {
+        const source = JSON.parse(readFileSync(join(directory, file), 'utf8'));
+        const result = await n8nClient.createWorkflow({
+          name: source.name,
+          nodes: source.nodes,
+          connections: source.connections,
+          settings: source.settings,
+        });
+        if (result.error) {
+          created.push({ file, error: result.error });
+          continue;
+        }
+        const entry: any = { file, id: result.data.id, name: result.data.name };
+        if (activate && source.active && result.data.id) {
+          const activation = await n8nClient.activateWorkflow(result.data.id);
+          entry.activated = !activation.error;
+          if (activation.error) entry.activationError = activation.error;
+        }
+        created.push(entry);
+      } catch (error: any) {
+        created.push({ file, error: error.message });
+      }
+    }
+
+    return jsonResult({
+      imported: created.filter((c) => !c.error).length,
+      failed: created.filter((c) => c.error).length,
+      results: created,
+    });
+  }
+);
+
 // ========== WORKFLOW TEMPLATE TOOLS ==========
 
 addTool(
@@ -765,23 +881,24 @@ addTool(
 addTool(
   'n8n_search_nodes',
   {
-    description: 'Search the built-in catalog of the most used n8n nodes (type, required params, docs, example). Use this BEFORE creating a workflow so node types are correct.',
+    description: 'Search the full catalog of 560 n8n nodes (extracted from the real n8n packages). Use this BEFORE creating a workflow so node types are correct. Returns summaries; use n8n_get_node for the full parameter schema.',
     inputSchema: {
-      query: z.string().describe('What the node should do (e.g. "slack", "http", "webhook", "schedule")'),
+      query: z.string().describe('What the node should do (e.g. "slack", "postgres", "vector store", "schedule")'),
       limit: z.number().int().positive().max(20).optional().describe('Max results (default 8)'),
     },
     annotations: readOnly,
   },
   async ({ query, limit }) =>
     jsonResult({
-      nodes: searchNodes(query, limit ?? 8).map(summarizeNode),
+      catalog: catalogStats(),
+      nodes: searchNodes(query, limit ?? 8),
     })
 );
 
 addTool(
   'n8n_get_node',
   {
-    description: 'Get schema, required parameters, docs and an example for a specific n8n node type.',
+    description: 'Get the real parameter schema of an n8n node type: parameters with types, options and display conditions, required params, credentials, latest typeVersion, plus curated notes and an example for common nodes.',
     inputSchema: {
       type: z.string().describe('Node type or alias (e.g. "n8n-nodes-base.slack" or "webhook")'),
     },
@@ -795,7 +912,44 @@ addTool(
         suggestion: 'Use n8n_search_nodes to find the correct type',
       });
     }
-    return jsonResult(summarizeNode(node));
+    return jsonResult(node);
+  }
+);
+
+addTool(
+  'n8n_autofix_workflow',
+  {
+    description: 'Apply safe mechanical fixes to a workflow: missing typeVersion, missing positions, duplicate node names, connections to nonexistent nodes, and missing "=" prefixes on expressions. By default returns a preview; set apply=true to save (a snapshot is taken first).',
+    inputSchema: {
+      id: z.string().describe('Workflow ID'),
+      apply: z.boolean().optional().describe('Save the fixed workflow (default false = preview only)'),
+    },
+  },
+  async ({ id, apply }) => {
+    const current = await n8nClient.getWorkflow(id);
+    if (current.error) return errorResult({ error: current.error });
+
+    const result = autofixWorkflow(current.data);
+    if (result.fixes.length === 0) {
+      return jsonResult({ message: 'Nothing to fix', fixes: [], validation: validateWorkflow(current.data) });
+    }
+
+    if (apply) {
+      saveSnapshot(id, current.data, 'before autofix');
+      const updated = await n8nClient.updateWorkflow(id, result.workflow);
+      if (updated.error) return errorResult({ error: updated.error, fixes: result.fixes });
+      return jsonResult({
+        applied: true,
+        fixes: result.fixes,
+        validation: validateWorkflow(result.workflow),
+      });
+    }
+
+    return jsonResult({
+      applied: false,
+      fixes: result.fixes,
+      hint: 'Run again with apply=true to save. A snapshot is saved first, so it can be rolled back.',
+    });
   }
 );
 
@@ -885,6 +1039,104 @@ addTool(
     annotations: readOnly,
   },
   async ({ workflowId }) => apiResult(await n8nClient.debugLastError(workflowId))
+);
+
+addTool(
+  'n8n_get_node_execution_data',
+  {
+    description: 'Inspect the data that flowed through a specific node in an execution, without downloading the whole execution. Without nodeName, returns an overview of all executed nodes (status, item counts, errors). With nodeName, returns the actual output items (limited sample) and error details for that node.',
+    inputSchema: {
+      executionId: z.string().describe('Execution ID'),
+      nodeName: z.string().optional().describe('Node name to inspect (omit for an overview of all nodes)'),
+      itemsLimit: z.number().int().positive().max(20).optional().describe('Max output items to return per run (default 3)'),
+    },
+    annotations: readOnly,
+  },
+  async ({ executionId, nodeName, itemsLimit }) => {
+    const execution = await n8nClient.getExecution(executionId, true);
+    if (execution.error) return errorResult({ error: execution.error });
+
+    const resultData = execution.data?.data?.resultData ?? execution.data?.resultData;
+    const runData: Record<string, any[]> = resultData?.runData ?? {};
+    if (Object.keys(runData).length === 0) {
+      return errorResult({ error: 'Execution has no run data (it may not have started or data was pruned)' });
+    }
+
+    if (!nodeName) {
+      return jsonResult({
+        executionId,
+        status: execution.data?.status,
+        lastNodeExecuted: resultData?.lastNodeExecuted,
+        executionError: resultData?.error?.message,
+        nodes: Object.entries(runData).map(([name, runs]) => {
+          const last = runs[runs.length - 1] ?? {};
+          const mainOutputs: any[][] = last.data?.main ?? [];
+          return {
+            name,
+            runs: runs.length,
+            status: last.executionStatus,
+            error: last.error?.message,
+            outputItems: mainOutputs.map((branch) => branch?.length ?? 0),
+            executionTimeMs: last.executionTime,
+          };
+        }),
+      });
+    }
+
+    const runs = runData[nodeName];
+    if (!runs) {
+      return errorResult({
+        error: `Node "${nodeName}" did not run in this execution`,
+        availableNodes: Object.keys(runData),
+      });
+    }
+
+    const limit = itemsLimit ?? 3;
+    return jsonResult({
+      executionId,
+      nodeName,
+      runs: runs.map((run: any, index: number) => {
+        const mainOutputs: any[][] = run.data?.main ?? [];
+        return {
+          run: index,
+          status: run.executionStatus,
+          executionTimeMs: run.executionTime,
+          error: run.error
+            ? { message: run.error.message, description: run.error.description }
+            : undefined,
+          outputItems: mainOutputs.map((branch) => branch?.length ?? 0),
+          sample: (mainOutputs[0] ?? []).slice(0, limit).map((item: any) => item?.json ?? item),
+        };
+      }),
+    });
+  }
+);
+
+addTool(
+  'n8n_workflow_health',
+  {
+    description: 'Operational health report computed from recent executions: success rate, failure count, average duration, and last failure per workflow, sorted worst-first. Use it to find which workflows need attention.',
+    inputSchema: {
+      workflowId: z.string().optional().describe('Limit to one workflow'),
+      limit: z.number().int().positive().max(500).optional().describe('How many recent executions to analyze (default 100)'),
+    },
+    annotations: readOnly,
+  },
+  async ({ workflowId, limit }) => {
+    const executions = await n8nClient.getExecutionsPaged({ workflowId }, limit ?? 100);
+    if (executions.error) return errorResult({ error: executions.error });
+
+    const names = new Map<string, string>();
+    if (!workflowId) {
+      const workflows = await n8nClient.getWorkflows({ fields: ['id', 'name'], limit: 250 });
+      for (const wf of workflows.data?.data ?? []) names.set(String(wf.id), wf.name);
+    }
+
+    return jsonResult({
+      sampleSize: executions.data.length,
+      workflows: computeHealth(executions.data, names),
+    });
+  }
 );
 
 addTool(
@@ -1042,9 +1294,52 @@ addTool(
   }
 );
 
+addTool(
+  'n8n_diff_workflow_snapshot',
+  {
+    description: 'Compare a workflow snapshot against the current state (or another snapshot): nodes added/removed/modified, changed parameters, and connection changes. Useful before deciding whether to roll back.',
+    inputSchema: {
+      id: z.string().describe('Workflow ID'),
+      from: z.string().optional().describe('Snapshot timestamp to compare from (default: most recent snapshot)'),
+      to: z.string().optional().describe('Snapshot timestamp to compare to (default: current state in n8n)'),
+    },
+    annotations: readOnly,
+  },
+  async ({ id, from, to }) => {
+    const fromSnapshot = loadSnapshot(id, from);
+    if (!fromSnapshot) {
+      return errorResult({
+        error: `No snapshot found for workflow ${id}${from ? ` at ${from}` : ''}`,
+        suggestion: 'Use n8n_list_workflow_snapshots to see what is available',
+      });
+    }
+
+    let target: any;
+    let targetLabel: string;
+    if (to) {
+      const toSnapshot = loadSnapshot(id, to);
+      if (!toSnapshot) return errorResult({ error: `No snapshot found at ${to}` });
+      target = toSnapshot.workflow;
+      targetLabel = to;
+    } else {
+      const current = await n8nClient.getWorkflow(id);
+      if (current.error) return errorResult({ error: current.error });
+      target = current.data;
+      targetLabel = 'current';
+    }
+
+    return jsonResult({
+      workflowId: id,
+      from: fromSnapshot.info.timestamp,
+      to: targetLabel,
+      diff: diffWorkflows(fromSnapshot.workflow, target),
+    });
+  }
+);
+
 // ========== GUIDED PROMPTS ==========
 
-server.registerPrompt(
+addPrompt(
   'build-workflow',
   {
     title: 'Build an n8n workflow',
@@ -1075,7 +1370,7 @@ server.registerPrompt(
   })
 );
 
-server.registerPrompt(
+addPrompt(
   'fix-workflow',
   {
     title: 'Diagnose and fix a failing n8n workflow',
@@ -1106,7 +1401,54 @@ server.registerPrompt(
 
 // ========== START SERVER ==========
 
+async function startHttp(port: number) {
+  const token = process.env.N8N_MCP_HTTP_TOKEN;
+  const httpServer = createHttpServer(async (req, res) => {
+    if (req.method === 'GET' && req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, server: 'mcp-n8n', version: packageJson.version, tools: enabledTools.size }));
+      return;
+    }
+    if (token && req.headers.authorization !== `Bearer ${token}`) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized: set Authorization: Bearer <N8N_MCP_HTTP_TOKEN>' }));
+      return;
+    }
+    try {
+      // Stateless mode: fresh server + transport per request
+      const server = buildServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      });
+      res.on('close', () => {
+        transport.close();
+        server.close();
+      });
+      await server.connect(transport);
+      await transport.handleRequest(req, res);
+    } catch (error) {
+      console.error('HTTP request error:', error);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+      }
+    }
+  });
+  httpServer.listen(port, () => {
+    console.error(
+      `n8n MCP Server listening on http://localhost:${port} (streamable HTTP, ${enabledTools.size} tools${token ? ', bearer auth enabled' : ', no auth - use N8N_MCP_HTTP_TOKEN in production'})`
+    );
+  });
+}
+
 async function main() {
+  const httpPort = process.env.N8N_MCP_HTTP_PORT ? parseInt(process.env.N8N_MCP_HTTP_PORT, 10) : undefined;
+  if (httpPort) {
+    await startHttp(httpPort);
+    return;
+  }
+  const server = buildServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(`n8n MCP Server running on stdio (${enabledTools.size} tools, N8N_TOOLSETS=${process.env.N8N_TOOLSETS || 'all'})`);

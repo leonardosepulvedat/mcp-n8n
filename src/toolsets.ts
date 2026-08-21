@@ -18,11 +18,15 @@ const TOOLSETS: Record<ToolsetName, string[]> = {
     'n8n_trigger_webhook',
     'n8n_list_workflow_snapshots',
     'n8n_rollback_workflow',
+    'n8n_diff_workflow_snapshot',
+    'n8n_get_node_execution_data',
+    'n8n_workflow_health',
   ],
   builder: [
     'n8n_search_nodes',
     'n8n_get_node',
     'n8n_validate_workflow',
+    'n8n_autofix_workflow',
     'n8n_search_public_templates',
     'n8n_import_public_template',
     'n8n_list_workflow_templates',
@@ -61,6 +65,8 @@ const TOOLSETS: Record<ToolsetName, string[]> = {
     'n8n_change_user_project_role',
     'n8n_generate_audit',
     'n8n_pull_source_control',
+    'n8n_export_all_workflows',
+    'n8n_import_workflows',
   ],
 };
 

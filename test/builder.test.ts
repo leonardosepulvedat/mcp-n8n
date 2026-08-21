@@ -27,17 +27,75 @@ describe('validateWorkflow', () => {
     expect(result.errors.some((e) => e.code === 'missing_param')).toBe(true);
   });
 
-  it('accepts a minimal valid webhook → slack flow', () => {
+  it('accepts a fully configured webhook → slack flow', () => {
     const result = validateWorkflow({
       name: 'Notify',
       nodes: [
         { name: 'Webhook', type: 'n8n-nodes-base.webhook', position: [0, 0], parameters: { path: 'hook', httpMethod: 'POST' } },
-        { name: 'Slack', type: 'n8n-nodes-base.slack', position: [200, 0], parameters: { resource: 'message', operation: 'post' } },
+        {
+          name: 'Slack',
+          type: 'n8n-nodes-base.slack',
+          position: [200, 0],
+          parameters: {
+            resource: 'message',
+            operation: 'post',
+            select: 'channel',
+            channelId: { __rl: true, mode: 'name', value: '#general' },
+            text: 'hello',
+          },
+        },
       ],
       connections: { Webhook: { main: [[{ node: 'Slack', type: 'main', index: 0 }]] } },
     });
     expect(result.valid).toBe(true);
     expect(result.warnings.some((w) => w.code === 'missing_credentials')).toBe(true);
+  });
+
+  it('catches conditionally required params using real schemas', () => {
+    const result = validateWorkflow({
+      name: 'Notify',
+      nodes: [
+        {
+          name: 'Slack',
+          type: 'n8n-nodes-base.slack',
+          position: [0, 0],
+          parameters: { resource: 'message', operation: 'post' },
+        },
+      ],
+      connections: {},
+    });
+    // "select" (channel) and "text" are required when posting a message
+    expect(result.errors.filter((e) => e.code === 'missing_param').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('rejects node types that do not exist in the real packages', () => {
+    const result = validateWorkflow({
+      name: 'Typo',
+      nodes: [{ name: 'Bad', type: 'n8n-nodes-base.slackk', position: [0, 0], parameters: {} }],
+      connections: {},
+    });
+    expect(result.errors.some((e) => e.code === 'unknown_node_type')).toBe(true);
+  });
+
+  it('lints expressions: missing = prefix and unknown node references', () => {
+    const result = validateWorkflow({
+      name: 'Expr',
+      nodes: [
+        { name: 'Webhook', type: 'n8n-nodes-base.webhook', position: [0, 0], parameters: { path: 'x', httpMethod: 'POST' } },
+        {
+          name: 'Set',
+          type: 'n8n-nodes-base.set',
+          position: [200, 0],
+          parameters: {
+            value: '{{ $json.name }}',
+            other: "=…{{ $('Ghost').item.json.x }}",
+          },
+        },
+      ],
+      connections: { Webhook: { main: [[{ node: 'Set', type: 'main', index: 0 }]] } },
+    });
+    expect(result.warnings.some((w) => w.code === 'expression_missing_prefix')).toBe(true);
+    expect(result.warnings.some((w) => w.code === 'expression_unknown_node')).toBe(true);
   });
 });
 

@@ -224,6 +224,47 @@ export class N8nClient {
     }
   }
 
+  /** Fetches every workflow, following pagination cursors. */
+  async getAllWorkflows(): Promise<ApiResponse> {
+    try {
+      const all: any[] = [];
+      let cursor: string | undefined;
+      do {
+        const response = await this.client.get('/workflows', {
+          params: { limit: 100, ...(cursor ? { cursor } : {}) },
+        });
+        all.push(...(response.data?.data ?? []));
+        cursor = response.data?.nextCursor ?? undefined;
+      } while (cursor);
+      return { data: all };
+    } catch (error: any) {
+      return { error: error.response?.data?.message || error.message };
+    }
+  }
+
+  /** Fetches executions across pages, up to maxResults. */
+  async getExecutionsPaged(filters: { workflowId?: string; status?: string }, maxResults = 100): Promise<ApiResponse> {
+    try {
+      const all: any[] = [];
+      let cursor: string | undefined;
+      do {
+        const response = await this.client.get('/executions', {
+          params: {
+            limit: Math.min(100, maxResults - all.length),
+            ...(filters.workflowId ? { workflowId: filters.workflowId } : {}),
+            ...(filters.status ? { status: filters.status } : {}),
+            ...(cursor ? { cursor } : {}),
+          },
+        });
+        all.push(...(response.data?.data ?? []));
+        cursor = response.data?.nextCursor ?? undefined;
+      } while (cursor && all.length < maxResults);
+      return { data: all.slice(0, maxResults) };
+    } catch (error: any) {
+      return { error: error.response?.data?.message || error.message };
+    }
+  }
+
   async getExecution(id: string, includeData = false): Promise<ApiResponse> {
     try {
       const response = await this.client.get(`/executions/${id}`, {

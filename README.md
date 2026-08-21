@@ -7,9 +7,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![n8n](https://img.shields.io/badge/n8n-compatible-orange.svg)](https://n8n.io)
 
-**Operate and build n8n from Cursor or Claude** — administration of your instance (users, projects, executions, audit) **and** a builder loop so the agent can look up nodes, validate JSON, apply small edits, and debug the last failure.
+**Operate and build n8n from Cursor or Claude** — administration of your instance (users, projects, executions, audit) **and** a full builder loop: a catalog of **560 nodes with real parameter schemas** extracted from the official n8n packages, validation before saving, automatic repair, snapshots with rollback and diff, per-node execution debugging, health reports, and full-instance backup.
 
-Two env vars. Runs on your machine. No hosted account.
+Two env vars. Runs on your machine (stdio) or as a remote HTTP server. No hosted account.
 
 ---
 
@@ -49,16 +49,24 @@ Two env vars. Runs on your machine. No hosted account.
 - **Type Support**: Compatible with all n8n credential types
 
 ### 🧱 Workflow Builder
-- **Node catalog**: search ~60 of the most used n8n nodes (`n8n_search_nodes`, `n8n_get_node`) with required params, docs and examples — triggers, data utilities, databases, Google/Microsoft, messaging, and LangChain AI nodes
-- **Validation**: `n8n_validate_workflow` catches missing params, broken connections and unknown types *before* save/activate
+- **Full node catalog — 560 nodes with real schemas**: extracted directly from `n8n-nodes-base` and `@n8n/n8n-nodes-langchain` (parameters with types, allowed options, display conditions, credentials, latest typeVersion), regenerated weekly by CI. Search with `n8n_search_nodes`, inspect with `n8n_get_node`
+- **Real validation**: `n8n_validate_workflow` checks against the real schemas — nonexistent node types, missing required params (including conditionally required ones), invalid option values, wrong typeVersion, broken connections — *before* save/activate
+- **Expression linting**: detects `{{ }}` expressions missing the `=` prefix and references to nodes that don't exist in the workflow
+- **Automatic repair**: `n8n_autofix_workflow` fixes missing typeVersion/positions, duplicate names, dangling connections and expression prefixes — preview first, apply with a snapshot
 - **Surgical edits**: `n8n_update_workflow_partial` adds/removes nodes and connections without rewriting the whole flow
-- **Debug loop**: `n8n_debug_last_error` returns the failing node and message from the last error
 - **Public templates**: search and import from n8n.io (`n8n_search_public_templates`, `n8n_import_public_template`) plus 100 bundled templates as a fallback
 - **Guided prompts**: MCP prompts `build-workflow` and `fix-workflow` walk any agent through the full build/validate/test/repair loop
 
+### 🔬 Deep Debugging & Health
+- **Per-node execution data**: `n8n_get_node_execution_data` shows exactly what data flowed through one node (status, item counts, output samples, error details) without downloading the whole execution
+- **Debug loop**: `n8n_debug_last_error` returns the failing node and message from the last error
+- **Health reports**: `n8n_workflow_health` computes success rate, failure count, average duration and last failure per workflow from recent executions, sorted worst-first
+
 ### 🛡️ Safety Net & Real Testing
-- **Automatic snapshots**: before every update, partial edit, or delete, the previous state is saved locally (`~/.mcp-n8n/snapshots`, configurable with `N8N_SNAPSHOT_DIR`)
+- **Automatic snapshots**: before every update, partial edit, autofix, or delete, the previous state is saved locally (`~/.mcp-n8n/snapshots`, configurable with `N8N_SNAPSHOT_DIR`)
 - **Rollback**: `n8n_rollback_workflow` restores any snapshot — even recreates a deleted workflow (`recreate=true`)
+- **Diff**: `n8n_diff_workflow_snapshot` compares a snapshot against the current state (nodes added/removed/modified, changed parameters, connection changes) before deciding to roll back
+- **Full-instance backup**: `n8n_export_all_workflows` saves every workflow as JSON files; `n8n_import_workflows` restores them
 - **End-to-end testing**: `n8n_trigger_webhook` calls a Webhook-trigger workflow on the instance and returns the real HTTP response, so the agent can verify the flow actually works
 
 ### 🎯 Bundled Templates
@@ -110,6 +118,20 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (Mac/Li
 ```
 
 `N8N_TOOLSETS` is optional (`all` by default). Use `core,builder` if you want operations + creation without user/project admin tools. Use `admin` only for instance administration.
+
+### Remote HTTP mode (optional)
+
+By default the server communicates over stdio (local). To run it as a shared remote server (e.g. in Docker or on a VPS), set a port:
+
+```bash
+N8N_BASE_URL=https://your-n8n-instance.com \
+N8N_API_KEY=your-api-key \
+N8N_MCP_HTTP_PORT=3000 \
+N8N_MCP_HTTP_TOKEN=some-strong-secret \
+mcp-n8n
+```
+
+This exposes the MCP protocol over streamable HTTP on port 3000 plus a `GET /health` endpoint. `N8N_MCP_HTTP_TOKEN` is strongly recommended: when set, every request must include `Authorization: Bearer <token>`. Point any MCP client that supports streamable HTTP at `http://your-host:3000` with that header.
 
 **Option B - Using npx (no installation needed, always latest version):**
 ```json
@@ -267,15 +289,18 @@ generates charts, and emails them to my team"
 
 - `n8n_list_workflow_snapshots` - Local history of every change made through this server
 - `n8n_rollback_workflow` - Restore a previous version, or recreate a deleted workflow
+- `n8n_diff_workflow_snapshot` - Compare a snapshot against the current state before rolling back
 - `n8n_trigger_webhook` - Call a webhook workflow and get the real response
+- `n8n_export_all_workflows` / `n8n_import_workflows` - Full-instance backup and restore
 
 </details>
 
 <details>
 <summary><strong>Builder</strong></summary>
 
-- `n8n_search_nodes` / `n8n_get_node` - Catalog of the most used nodes
-- `n8n_validate_workflow` - Check JSON before save/activate
+- `n8n_search_nodes` / `n8n_get_node` - Full catalog: 560 nodes with real parameter schemas
+- `n8n_validate_workflow` - Check JSON against real schemas before save/activate
+- `n8n_autofix_workflow` - Mechanical repairs: typeVersion, positions, duplicates, dangling connections, expression prefixes
 - `n8n_search_public_templates` / `n8n_import_public_template` - Official n8n.io library
 - `n8n_list_workflow_templates` / `n8n_get_workflow_template` / `n8n_create_workflow_from_template` - Bundled templates
 
@@ -302,6 +327,8 @@ generates charts, and emails them to my team"
 - `n8n_delete_execution` - Remove execution records
 - `n8n_retry_execution` - Retry failed executions
 - `n8n_debug_last_error` - Failing node + message from the last error
+- `n8n_get_node_execution_data` - Data that flowed through one specific node
+- `n8n_workflow_health` - Success rate, failures and duration per workflow
 
 </details>
 
@@ -333,7 +360,7 @@ generates charts, and emails them to my team"
 
 </details>
 
-**55 tools** by default (`N8N_TOOLSETS=all`). `core,builder` exposes 24. Plus 2 MCP prompts (`build-workflow`, `fix-workflow`).
+**61 tools** by default (`N8N_TOOLSETS=all`). `core,builder` exposes 28. Plus 2 MCP prompts (`build-workflow`, `fix-workflow`).
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "name": "mcp-n8n",
-  "version": "1.4.1",
-  "description": "MCP server for n8n: operate the instance and build validated workflows",
+  "version": "1.5.0",
+  "description": "MCP server for n8n: full 560-node catalog with real schemas, validated workflow building, autofix, snapshots with rollback and diff, execution debugging, health reports, full-instance backup, and remote HTTP mode",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -12,7 +12,8 @@
     "watch": "tsc --watch",
     "dev": "tsc --watch",
     "prepare": "npm run build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate:catalog": "node scripts/generate-node-catalog.mjs"
   },
   "keywords": [
     "mcp",

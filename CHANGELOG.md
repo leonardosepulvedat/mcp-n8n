@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-21
+
+### Added
+- **Full node catalog with real schemas**: 560 nodes extracted directly from `n8n-nodes-base` and `@n8n/n8n-nodes-langchain` — parameters with types, allowed options, display conditions, credentials, and latest typeVersion — shipped compressed (~220 KB) and regenerated weekly by CI. The curated layer remains as an overlay with docs links, notes and examples for the most used nodes.
+- **Schema-aware validation**: `n8n_validate_workflow` now detects nonexistent node types, missing required parameters (including conditionally required ones based on the node's current configuration), invalid option values, and typeVersions higher than the latest known.
+- **Expression linting**: warns about `{{ }}` expressions missing the `=` prefix and about references to nodes that do not exist in the workflow (`$('Node')`, `$node["Node"]`).
+- `n8n_autofix_workflow`: applies safe mechanical repairs (missing typeVersion and positions, duplicate node names with connection rewiring, connections to nonexistent nodes, missing `=` expression prefixes). Preview by default; `apply=true` saves after taking a snapshot.
+- `n8n_get_node_execution_data`: inspect the data that flowed through one specific node of an execution (status, item counts, output samples, error details) without downloading the whole execution.
+- `n8n_workflow_health`: per-workflow success rate, failure count, average duration and last failure computed from recent executions, sorted worst-first.
+- `n8n_diff_workflow_snapshot`: compare a snapshot against the current state (or another snapshot) — nodes added/removed/modified, changed parameters, connection changes.
+- `n8n_export_all_workflows` / `n8n_import_workflows`: full-instance backup to local JSON files and restore.
+- **Remote HTTP mode**: set `N8N_MCP_HTTP_PORT` to serve the MCP protocol over streamable HTTP (with a `GET /health` endpoint); optional bearer authentication via `N8N_MCP_HTTP_TOKEN`.
+- Weekly CI workflow that regenerates the node catalog from the latest n8n packages.
+
+### Changed
+- `n8n_search_nodes` now searches all 560 nodes and returns lightweight summaries; `n8n_get_node` returns the full real parameter schema.
+- 61 tools total (`core,builder` exposes 28).
+
 ## [1.4.1] - 2026-08-20
 
 ### Added

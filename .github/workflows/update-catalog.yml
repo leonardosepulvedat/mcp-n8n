@@ -1,0 +1,35 @@
+name: Update node catalog
+
+on:
+  schedule:
+    # Weekly: Mondays 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Regenerate catalog from latest n8n packages
+        run: npm run generate:catalog
+      - name: Verify build and tests still pass
+        run: npm run build && npm test
+      - name: Commit if the catalog changed
+        run: |
+          if git diff --quiet data/nodes.json.gz; then
+            echo "Catalog unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/nodes.json.gz
+          git commit -m "chore: regenerate node catalog from latest n8n packages"
+          git push

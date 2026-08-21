@@ -862,48 +862,170 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
   },
 ];
 
-export function searchNodes(query: string, limit = 8): NodeCatalogEntry[] {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  if (terms.length === 0) return NODE_CATALOG.slice(0, limit);
+// ========== HYBRID SEARCH: generated catalog (560 nodes) + curated overlay ==========
 
-  const scored = NODE_CATALOG.map((node) => {
-    let score = 0;
-    const haystack = [node.type, node.displayName, node.category, ...node.aliases, node.notes]
-      .join(' ')
-      .toLowerCase();
-    for (const term of terms) {
-      if (node.type.toLowerCase() === term || node.displayName.toLowerCase() === term) score += 10;
-      if (node.aliases.some((a) => a === term)) score += 8;
-      if (haystack.includes(term)) score += 3;
-    }
-    return { node, score };
-  })
-    .filter((row) => row.score > 0)
-    .sort((a, b) => b.score - a.score);
+import {
+  allGeneratedNodes,
+  findGeneratedNode,
+  catalogInfo,
+  type GeneratedNode,
+  type GeneratedProperty,
+} from './catalog-data.js';
 
-  return scored.slice(0, limit).map((row) => row.node);
+const curatedByType = new Map(NODE_CATALOG.map((entry) => [entry.type.toLowerCase(), entry]));
+
+export interface NodeSearchResult {
+  type: string;
+  displayName: string;
+  category: string;
+  description: string;
+  isTrigger: boolean;
+  needsCredentials: boolean;
+  latestVersion: number;
 }
 
-export function getNode(typeOrName: string): NodeCatalogEntry | undefined {
-  const q = typeOrName.toLowerCase();
-  return NODE_CATALOG.find(
+export interface NodeDetail extends NodeSearchResult {
+  credentials: { name: string; required?: boolean }[];
+  requiredParams: string[];
+  parameters: GeneratedProperty[];
+  parametersTruncated?: boolean;
+  docs?: string;
+  notes?: string;
+  exampleParameters?: Record<string, unknown>;
+}
+
+function toSearchResult(node: GeneratedNode): NodeSearchResult {
+  return {
+    type: node.type,
+    displayName: node.displayName,
+    category: node.isTrigger ? 'trigger' : (node.group[0] ?? 'other'),
+    description: node.description,
+    isTrigger: node.isTrigger,
+    needsCredentials: node.credentials.length > 0,
+    latestVersion: node.latestVersion,
+  };
+}
+
+function curatedToSearchResult(entry: NodeCatalogEntry): NodeSearchResult {
+  return {
+    type: entry.type,
+    displayName: entry.displayName,
+    category: entry.category,
+    description: entry.notes,
+    isTrigger: entry.category === 'trigger',
+    needsCredentials: entry.needsCredentials,
+    latestVersion: entry.typeVersion,
+  };
+}
+
+export function searchNodes(query: string, limit = 8): NodeSearchResult[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const generated = allGeneratedNodes();
+
+  if (generated.length === 0) {
+    // Fallback: curated-only search (generated data file missing)
+    const scored = NODE_CATALOG.map((node) => {
+      let score = 0;
+      const haystack = [node.type, node.displayName, ...node.aliases, node.notes].join(' ').toLowerCase();
+      for (const term of terms) {
+        if (node.displayName.toLowerCase() === term) score += 10;
+        if (node.aliases.some((a) => a === term)) score += 8;
+        if (haystack.includes(term)) score += 3;
+      }
+      return { node, score };
+    })
+      .filter((row) => row.score > 0)
+      .sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit).map((row) => curatedToSearchResult(row.node));
+  }
+
+  const scored = generated
+    .map((node) => {
+      let score = 0;
+      const displayLower = node.displayName.toLowerCase();
+      const shortType = (node.type.split('.').pop() ?? '').toLowerCase();
+      const descLower = node.description.toLowerCase();
+      const curated = curatedByType.get(node.type.toLowerCase());
+      for (const term of terms) {
+        if (displayLower === term || shortType === term) score += 10;
+        else if (displayLower.includes(term) || shortType.includes(term)) score += 5;
+        if (curated?.aliases.some((a) => a === term)) score += 8;
+        else if (curated?.aliases.some((a) => a.includes(term))) score += 4;
+        if (descLower.includes(term)) score += 2;
+      }
+      // Slight boost for curated (most-used) nodes to break ties sensibly
+      if (score > 0 && curated) score += 1;
+      return { node, score };
+    })
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score || a.node.type.localeCompare(b.node.type));
+
+  return scored.slice(0, limit).map((row) => toSearchResult(row.node));
+}
+
+const MAX_PARAMETERS = 100;
+
+export function getNode(typeOrName: string): NodeDetail | undefined {
+  const q = typeOrName.toLowerCase().trim();
+
+  // Resolve curated aliases ("incoming request" → webhook) first
+  const curatedMatch = NODE_CATALOG.find(
     (node) =>
       node.type.toLowerCase() === q ||
       node.displayName.toLowerCase() === q ||
       node.aliases.some((alias) => alias === q)
   );
+
+  const generated = findGeneratedNode(curatedMatch?.type ?? typeOrName);
+  const curated = curatedMatch ?? (generated ? curatedByType.get(generated.type.toLowerCase()) : undefined);
+
+  if (!generated && !curated) return undefined;
+
+  if (!generated) {
+    // Curated-only fallback
+    return {
+      ...curatedToSearchResult(curated!),
+      credentials: [],
+      requiredParams: curated!.requiredParams,
+      parameters: [],
+      docs: curated!.docs,
+      notes: curated!.notes,
+      exampleParameters: curated!.exampleParameters as Record<string, unknown>,
+    };
+  }
+
+  const requiredParams = [
+    ...new Set([
+      ...generated.properties.filter((p) => p.required && !p.show).map((p) => p.name),
+      ...(curated?.requiredParams ?? []),
+    ]),
+  ];
+
+  return {
+    ...toSearchResult(generated),
+    credentials: generated.credentials,
+    requiredParams,
+    parameters: generated.properties.slice(0, MAX_PARAMETERS),
+    ...(generated.properties.length > MAX_PARAMETERS && { parametersTruncated: true }),
+    ...(curated?.docs && { docs: curated.docs }),
+    ...(curated?.notes && { notes: curated.notes }),
+    ...(curated?.exampleParameters && {
+      exampleParameters: curated.exampleParameters as Record<string, unknown>,
+    }),
+  };
 }
 
-export function summarizeNode(node: NodeCatalogEntry) {
-  return {
-    type: node.type,
-    displayName: node.displayName,
-    category: node.category,
-    typeVersion: node.typeVersion,
-    requiredParams: node.requiredParams,
-    needsCredentials: node.needsCredentials,
-    docs: node.docs,
-    notes: node.notes,
-    exampleParameters: node.exampleParameters,
-  };
+export function getGeneratedSchema(type: string): GeneratedNode | undefined {
+  return findGeneratedNode(type);
+}
+
+export function catalogStats(): { source: string; nodeCount: number } {
+  const info = catalogInfo();
+  if (info) {
+    return {
+      source: Object.entries(info.packages).map(([n, v]) => `${n}@${v}`).join(', '),
+      nodeCount: info.nodeCount,
+    };
+  }
+  return { source: 'curated fallback', nodeCount: NODE_CATALOG.length };
 }
