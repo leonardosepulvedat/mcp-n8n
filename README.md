@@ -1,7 +1,8 @@
 # MCP n8n Server
 
-[![smithery badge](https://smithery.ai/badge/mcp-n8n)](https://smithery.ai/server/mcp-n8n)
 [![npm version](https://img.shields.io/npm/v/mcp-n8n.svg)](https://www.npmjs.com/package/mcp-n8n)
+[![npm downloads](https://img.shields.io/npm/dm/mcp-n8n.svg)](https://www.npmjs.com/package/mcp-n8n)
+[![CI](https://github.com/leonardosepulvedat/mcp-n8n/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardosepulvedat/mcp-n8n/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![n8n](https://img.shields.io/badge/n8n-compatible-orange.svg)](https://n8n.io)
