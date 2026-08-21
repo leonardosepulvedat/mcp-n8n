@@ -26,6 +26,9 @@ jobs:
 
   mcp-registry:
     needs: publish
+    # On manual dispatch, publish to the registry even if the npm job failed
+    # (e.g. the version was already published manually).
+    if: always() && (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       id-token: write # GitHub OIDC for registry auth
