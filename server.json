@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.leonardosepulvedat/mcp-n8n",
+  "description": "Operate and build n8n: 55 tools for workflows, executions, credentials, users and projects, plus node catalog, validation, surgical edits, webhook testing, and automatic snapshots with rollback.",
+  "repository": {
+    "url": "https://github.com/leonardosepulvedat/mcp-n8n",
+    "source": "github"
+  },
+  "version": "1.4.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "mcp-n8n",
+      "version": "1.4.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "N8N_BASE_URL",
+          "description": "Base URL of the n8n instance (e.g. https://your-n8n-instance.com)",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "N8N_API_KEY",
+          "description": "n8n API key (Settings -> n8n API)",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "N8N_TOOLSETS",
+          "description": "Comma-separated toolsets to expose: core, builder, admin (default: all)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

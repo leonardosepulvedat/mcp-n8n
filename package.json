@@ -1,6 +1,6 @@
 {
   "name": "mcp-n8n",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "MCP server for n8n: operate the instance and build validated workflows",
   "type": "module",
   "main": "dist/index.js",
@@ -52,5 +52,6 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "mcpName": "io.github.leonardosepulvedat/mcp-n8n"
 }

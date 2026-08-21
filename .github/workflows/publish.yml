@@ -23,3 +23,29 @@ jobs:
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  mcp-registry:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # GitHub OIDC for registry auth
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m).tar.gz" | tar xz mcp-publisher
+      - name: Sync server.json version with package.json
+        run: |
+          VERSION=$(jq -r .version package.json)
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > server.json.tmp
+          mv server.json.tmp server.json
+      - name: Publish to MCP Registry
+        run: |
+          ./mcp-publisher login github-oidc
+          # npm propagation can lag behind; retry a few times
+          for i in 1 2 3; do
+            ./mcp-publisher publish && exit 0
+            echo "Retry $i failed, waiting 60s..."
+            sleep 60
+          done
+          exit 1
