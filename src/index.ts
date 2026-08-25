@@ -37,13 +37,14 @@ const N8N_BASE_URL = process.env.N8N_BASE_URL;
 const N8N_API_KEY = process.env.N8N_API_KEY;
 
 if (!N8N_BASE_URL || !N8N_API_KEY) {
-  console.error('Error: N8N_BASE_URL and N8N_API_KEY environment variables are required');
-  process.exit(1);
+  console.error(
+    'Warning: N8N_BASE_URL and N8N_API_KEY are not set. The server will start so clients can list tools, but calls to n8n will fail until they are provided.'
+  );
 }
 
 const n8nClient = new N8nClient({
-  baseUrl: N8N_BASE_URL,
-  apiKey: N8N_API_KEY,
+  baseUrl: N8N_BASE_URL || 'https://localhost',
+  apiKey: N8N_API_KEY || '',
 });
 
 // ========== RESULT HELPERS ==========
