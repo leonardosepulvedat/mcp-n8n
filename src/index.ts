@@ -70,8 +70,9 @@ function apiResult(result: ApiResponse) {
 }
 
 // Tool annotations
-const readOnly = { readOnlyHint: true };
-const destructive = { destructiveHint: true };
+const readOnly = { readOnlyHint: true, destructiveHint: false };
+const destructive = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
+const mutating = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 
 // ========== SERVER ==========
 
@@ -171,7 +172,7 @@ addTool(
 addTool(
   'n8n_get_workflow',
   {
-    description: 'Get detailed information about a specific workflow by ID.',
+    description: 'Get one workflow by ID, including its nodes, connections, and settings. Read-only. Use this after n8n_list_workflows_summary when you need the full definition of a single workflow. Returns the workflow object, or an error if the ID does not exist.',
     inputSchema: { id: z.string().describe('Workflow ID') },
     annotations: readOnly,
   },
@@ -232,11 +233,12 @@ addTool(
 addTool(
   'n8n_transfer_workflow',
   {
-    description: 'Transfer a workflow to another project.',
+    description: 'Move a workflow to another project. It leaves the source project; this is not a copy and nodes are not changed. Credentials may stay behind. Use n8n_list_projects for destinationProjectId. Returns the transfer result. Requires access to both projects.',
     inputSchema: {
       id: z.string().describe('Workflow ID'),
-      destinationProjectId: z.string().describe('Destination project ID'),
+      destinationProjectId: z.string().describe('Destination project ID from n8n_list_projects'),
     },
+    annotations: mutating,
   },
   async ({ id, destinationProjectId }) =>
     apiResult(await n8nClient.transferWorkflow(id, destinationProjectId))
@@ -255,11 +257,12 @@ addTool(
 addTool(
   'n8n_update_workflow_tags',
   {
-    description: 'Update tags for a workflow.',
+    description: 'Replace the entire tag set of one workflow with tagIds. Tags omitted from the array are removed from that workflow; nodes are not changed. Call n8n_list_tags to resolve names to IDs and n8n_get_workflow_tags to see the current set first. Sending the same IDs again leaves the tags unchanged. Returns the updated tag list. Requires permission to edit the workflow.',
     inputSchema: {
       id: z.string().describe('Workflow ID'),
-      tagIds: z.array(z.string()).describe('Array of tag IDs'),
+      tagIds: z.array(z.string()).describe('Complete list of tag IDs that should remain on the workflow'),
     },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   async ({ id, tagIds }) => apiResult(await n8nClient.updateWorkflowTags(id, tagIds))
 );
@@ -300,7 +303,7 @@ addTool(
 addTool(
   'n8n_delete_execution',
   {
-    description: 'Delete an execution record.',
+    description: 'Delete one execution history record by ID. Irreversible: the run log is removed and the workflow itself is kept. Call n8n_get_execution first if you still need the error or output. Returns the deletion result.',
     inputSchema: { id: z.string().describe('Execution ID to delete') },
     annotations: destructive,
   },
@@ -310,8 +313,9 @@ addTool(
 addTool(
   'n8n_retry_execution',
   {
-    description: 'Retry a failed execution.',
+    description: 'Retry a failed execution by ID, starting a new run when n8n allows it. Does not edit the workflow. Use n8n_debug_last_error first if you need the failing node. Fails when the execution cannot be retried. Returns the new execution.',
     inputSchema: { id: z.string().describe('Execution ID to retry') },
+    annotations: mutating,
   },
   async ({ id }) => apiResult(await n8nClient.retryExecution(id))
 );
@@ -321,13 +325,14 @@ addTool(
 addTool(
   'n8n_create_credential',
   {
-    description: 'Create a new credential for a specific node type.',
+    description: 'Create a stored credential for a credential type such as httpBasicAuth, not a node type. Call n8n_get_credential_schema first and put every required field in data. A duplicate name is rejected. This stores the secret on the instance and does not attach it to a node. Optional projectId scopes it to that project. Returns the new credential id and metadata, not the secret. Requires permission to create credentials.',
     inputSchema: {
-      name: z.string().describe('Credential name'),
-      type: z.string().describe('Credential type (e.g., "httpBasicAuth")'),
-      data: z.record(z.any()).describe('Credential data'),
-      projectId: z.string().optional().describe('Project ID'),
+      name: z.string().describe('Credential name, unique in its scope'),
+      type: z.string().describe('Credential type from n8n_get_credential_schema, for example httpBasicAuth'),
+      data: z.record(z.any()).describe('Field values required by that credential type'),
+      projectId: z.string().optional().describe('Project ID to scope the credential; omit for the instance default'),
     },
+    annotations: mutating,
   },
   async (args) => apiResult(await n8nClient.createCredential(args as any))
 );
@@ -355,11 +360,13 @@ addTool(
 addTool(
   'n8n_transfer_credential',
   {
-    description: 'Transfer a credential to another project.',
+    description: 'Move a credential to another project. It leaves the source project; this is not a copy, so workflows there lose access to it. Use n8n_list_projects for destinationProjectId. Returns the transfer result. Requires access to both projects.',
+
     inputSchema: {
       id: z.string().describe('Credential ID'),
       destinationProjectId: z.string().describe('Destination project ID'),
     },
+    annotations: mutating,
   },
   async ({ id, destinationProjectId }) =>
     apiResult(await n8nClient.transferCredential(id, destinationProjectId))
@@ -370,8 +377,9 @@ addTool(
 addTool(
   'n8n_create_tag',
   {
-    description: 'Create a new tag for organizing workflows.',
-    inputSchema: { name: z.string().describe('Tag name') },
+    description: 'Create a tag by name. Call n8n_list_tags first; a duplicate name is rejected. This does not attach the tag to a workflow — use n8n_update_workflow_tags for that. Returns the new tag id and name.',
+    inputSchema: { name: z.string().describe('Tag name, unique among existing tags') },
+    annotations: mutating,
   },
   async ({ name }) => apiResult(await n8nClient.createTag({ name }))
 );
@@ -399,11 +407,12 @@ addTool(
 addTool(
   'n8n_update_tag',
   {
-    description: 'Update a tag name.',
+    description: 'Rename a tag. The id stays the same, so workflows that already use it keep the tag. Call n8n_list_tags for the id. A name that already exists is rejected. Returns the updated tag.',
     inputSchema: {
       id: z.string().describe('Tag ID'),
-      name: z.string().describe('New tag name'),
+      name: z.string().describe('New unique tag name'),
     },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   async ({ id, name }) => apiResult(await n8nClient.updateTag(id, { name }))
 );
@@ -411,7 +420,7 @@ addTool(
 addTool(
   'n8n_delete_tag',
   {
-    description: 'Delete a tag.',
+    description: 'Delete a tag by id. Workflows lose that tag; the workflows themselves are not deleted. Irreversible. Call n8n_list_tags to confirm the id. Returns the deletion result.',
     inputSchema: { id: z.string().describe('Tag ID to delete') },
     annotations: destructive,
   },
@@ -423,13 +432,14 @@ addTool(
 addTool(
   'n8n_create_variable',
   {
-    description: 'Create a new environment variable in n8n.',
+    description: 'Create an environment variable. Call n8n_list_variables first; a duplicate key is rejected. type is string, boolean, or number. Optional projectId scopes it to a project. The value is stored on the instance and can be read later with n8n_list_variables. Returns the created variable. Requires permission to manage variables.',
     inputSchema: {
-      key: z.string().describe('Variable key'),
+      key: z.string().describe('Variable key, unique in its scope'),
       value: z.string().describe('Variable value'),
-      type: z.enum(['string', 'boolean', 'number']).optional().describe('Variable type'),
-      projectId: z.string().optional().describe('Project ID'),
+      type: z.enum(['string', 'boolean', 'number']).optional().describe('Variable type; omit to let n8n default it'),
+      projectId: z.string().optional().describe('Project ID; omit for an instance variable'),
     },
+    annotations: mutating,
   },
   async (args) => apiResult(await n8nClient.createVariable(args as any))
 );
@@ -437,7 +447,7 @@ addTool(
 addTool(
   'n8n_list_variables',
   {
-    description: 'List all environment variables.',
+    description: 'List environment variables. Read-only. Optional projectId and state narrow the list. Returns id, key, value, and type. Does not create or change variables; use n8n_create_variable or n8n_update_variable for that.',
     inputSchema: {
       projectId: z.string().optional().describe('Filter by project ID'),
       state: z.string().optional().describe('Filter by state'),
@@ -488,19 +498,20 @@ addTool(
 addTool(
   'n8n_create_users',
   {
-    description: 'Create multiple users at once.',
+    description: 'Create one or more n8n users in one call. Owner only. Each item needs an email; role is global:owner, global:admin, or global:member. Call n8n_list_users first — an email that already exists is rejected. Does not create workflows for them. Returns the created users. If one email fails, treat the whole call as failed and do not retry blindly.',
     inputSchema: {
       users: z
         .array(
           z.object({
-            email: z.string(),
-            firstName: z.string().optional(),
-            lastName: z.string().optional(),
-            role: z.enum(['global:owner', 'global:admin', 'global:member']).optional(),
+            email: z.string().describe('Email address, unique on the instance'),
+            firstName: z.string().optional().describe('First name'),
+            lastName: z.string().optional().describe('Last name'),
+            role: z.enum(['global:owner', 'global:admin', 'global:member']).optional().describe('Instance role; omit for the n8n default'),
           })
         )
-        .describe('Array of user objects'),
+        .describe('Users to create'),
     },
+    annotations: mutating,
   },
   async ({ users }) => apiResult(await n8nClient.createUsers(users as any))
 );
@@ -518,7 +529,7 @@ addTool(
 addTool(
   'n8n_delete_user',
   {
-    description: 'Delete a user.',
+    description: 'Delete a user by id. Owner only. Irreversible: the account is removed. Workflows are not deleted by this tool. Call n8n_list_users to confirm the id. Returns the deletion result.',
     inputSchema: { id: z.string().describe('User ID to delete') },
     annotations: destructive,
   },
@@ -528,11 +539,12 @@ addTool(
 addTool(
   'n8n_change_user_role',
   {
-    description: "Change a user's global role.",
+    description: "Set a user's instance-wide role to global:owner, global:admin, or global:member. Owner only. This is not a project role; use n8n_change_user_project_role for membership inside one project. Sending the same role again leaves the user unchanged. Returns the updated user.",
     inputSchema: {
       id: z.string().describe('User ID'),
-      role: z.enum(['global:owner', 'global:admin', 'global:member']).describe('New role'),
+      role: z.enum(['global:owner', 'global:admin', 'global:member']).describe('New instance-wide role'),
     },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   async ({ id, role }) => apiResult(await n8nClient.changeUserRole(id, role))
 );
@@ -542,11 +554,12 @@ addTool(
 addTool(
   'n8n_create_project',
   {
-    description: 'Create a new project in n8n.',
+    description: 'Create a project. name is required. type is team or personal; omit it to let n8n apply its default. This does not add members — use n8n_add_user_to_project after you have the new id. A duplicate name may be rejected. Returns the new project id, name, and type. Requires permission to create projects.',
     inputSchema: {
       name: z.string().describe('Project name'),
-      type: z.enum(['team', 'personal']).optional().describe('Project type'),
+      type: z.enum(['team', 'personal']).optional().describe('team or personal; omit for the n8n default'),
     },
+    annotations: mutating,
   },
   async (args) => apiResult(await n8nClient.createProject(args as any))
 );
@@ -554,7 +567,7 @@ addTool(
 addTool(
   'n8n_list_projects',
   {
-    description: 'List all projects.',
+    description: 'List projects visible to this API key. Read-only. Returns id, name, and type for each project, without workflow contents. Use an id with n8n_update_project, n8n_delete_project, or the transfer tools.',
     inputSchema: {},
     annotations: readOnly,
   },
@@ -564,12 +577,13 @@ addTool(
 addTool(
   'n8n_update_project',
   {
-    description: 'Update a project.',
+    description: 'Rename a project or change its type between team and personal. Only fields you send are changed; omitted fields stay as they are. Call n8n_list_projects for the id. Does not move workflows or change members. Sending the current name and type again leaves the project unchanged. Returns the updated project. Requires permission to edit that project.',
     inputSchema: {
-      id: z.string().describe('Project ID'),
-      name: z.string().optional().describe('New project name'),
-      type: z.enum(['team', 'personal']).optional(),
+      id: z.string().describe('Project ID from n8n_list_projects'),
+      name: z.string().optional().describe('New project name; omit to keep the current name'),
+      type: z.enum(['team', 'personal']).optional().describe('New type, team or personal; omit to keep the current type'),
     },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   async ({ id, ...updates }) => apiResult(await n8nClient.updateProject(id, updates as any))
 );
@@ -577,7 +591,7 @@ addTool(
 addTool(
   'n8n_delete_project',
   {
-    description: 'Delete a project.',
+    description: 'Delete a project by id. Irreversible. Workflows and credentials in it can become inaccessible; this tool does not export them. Call n8n_export_all_workflows first if you need a copy, and n8n_list_projects to confirm the id. Returns the deletion result. Requires permission to delete that project.',
     inputSchema: { id: z.string().describe('Project ID to delete') },
     annotations: destructive,
   },
@@ -587,12 +601,13 @@ addTool(
 addTool(
   'n8n_add_user_to_project',
   {
-    description: 'Add a user to a project with a specific role.',
+    description: 'Add an existing user to a project with a project role. The user must already exist (n8n_list_users) and the project must exist (n8n_list_projects). This does not change their instance-wide role. If they are already a member, n8n rejects the call; use n8n_change_user_project_role instead. Returns the membership. Requires permission to manage that project.',
     inputSchema: {
-      projectId: z.string().describe('Project ID'),
-      userId: z.string().describe('User ID to add'),
-      role: z.string().describe('User role in project'),
+      projectId: z.string().describe('Project ID from n8n_list_projects'),
+      userId: z.string().describe('Existing user ID from n8n_list_users'),
+      role: z.string().describe('Project role n8n accepts for a member, such as project:admin'),
     },
+    annotations: mutating,
   },
   async ({ projectId, userId, role }) =>
     apiResult(await n8nClient.addUserToProject(projectId, userId, role))
@@ -601,7 +616,7 @@ addTool(
 addTool(
   'n8n_remove_user_from_project',
   {
-    description: 'Remove a user from a project.',
+    description: 'Remove a user from one project. They lose access to that project only; the account and other projects stay. To undo it, call n8n_add_user_to_project again. Returns the removal result. Requires permission to manage that project.',
     inputSchema: {
       projectId: z.string().describe('Project ID'),
       userId: z.string().describe('User ID to remove'),
@@ -615,12 +630,13 @@ addTool(
 addTool(
   'n8n_change_user_project_role',
   {
-    description: "Change a user's role within a project.",
+    description: "Change a member's role inside one project. Does not change their instance-wide role; use n8n_change_user_role for that. The user must already belong to the project — if not, call n8n_add_user_to_project. Sending the same role again leaves the membership unchanged. Returns the updated membership.",
     inputSchema: {
       projectId: z.string().describe('Project ID'),
-      userId: z.string().describe('User ID'),
-      role: z.string().describe('New role'),
+      userId: z.string().describe('User ID of a current project member'),
+      role: z.string().describe('New project role, such as project:admin'),
     },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   async ({ projectId, userId, role }) =>
     apiResult(await n8nClient.changeUserProjectRole(projectId, userId, role))
@@ -631,7 +647,7 @@ addTool(
 addTool(
   'n8n_generate_audit',
   {
-    description: 'Generate a security audit report.',
+    description: 'Generate the instance security audit. Read-only: it does not change workflows, credentials, or users. Returns the report sections from the n8n audit API. Requires an owner or admin API key. Use this instead of guessing security issues from workflow JSON.',
     inputSchema: {},
     annotations: readOnly,
   },
@@ -641,8 +657,9 @@ addTool(
 addTool(
   'n8n_pull_source_control',
   {
-    description: 'Pull changes from remote source control repository.',
+    description: 'Pull the Git repository connected in n8n and apply it to this instance. Workflows that differ from the remote can be overwritten. This is not a local backup (n8n_export_all_workflows) and not a snapshot restore (n8n_rollback_workflow). Fails if source control is not configured. Returns the pull result. Requires permission to use source control.',
     inputSchema: {},
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
   },
   async () => apiResult(await n8nClient.pullSourceControl())
 );
@@ -821,13 +838,14 @@ addTool(
 addTool(
   'n8n_create_workflow_from_template',
   {
-    description: 'Create a new workflow in n8n based on a template. Automatically selects the best template if not specified.',
+    description: 'Create a new workflow from a bundled template. Pass templateId, or userRequest to match a local template; if neither matches, the call fails — then use n8n_list_workflow_templates. workflowName overrides the template name. activate=true turns triggers on after creation. Template credentials are not created; they must be attached in n8n. Does not modify an existing workflow. Returns the new workflow id and name.',
     inputSchema: {
-      templateId: z.string().optional().describe('Template ID to use (if known)'),
-      userRequest: z.string().optional().describe('Description of what the user wants. Used to find the best matching template if templateId not provided.'),
-      workflowName: z.string().optional().describe('Custom name for the new workflow (optional, will use template name if not provided)'),
-      activate: z.boolean().optional().describe('Whether to activate the workflow after creation'),
+      templateId: z.string().optional().describe('Bundled template ID. Omit to match userRequest instead.'),
+      userRequest: z.string().optional().describe('What to build, used only when templateId is omitted'),
+      workflowName: z.string().optional().describe('Name for the new workflow; omit to keep the template name'),
+      activate: z.boolean().optional().describe('true activates triggers immediately; omit or false leaves it inactive'),
     },
+    annotations: mutating,
   },
   async (args) => {
     const selectedTemplate = resolveTemplate(args);
